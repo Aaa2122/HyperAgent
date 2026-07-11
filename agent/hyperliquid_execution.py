@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from decimal import Decimal, ROUND_DOWN
 from typing import Any
 
@@ -541,7 +542,25 @@ class HyperliquidExecutionService:
             )
             if not isinstance(response, dict) or response.get("status") != "ok":
                 raise RuntimeError("protective cancellation rejected")
-            self.repository.cancel_protections(symbol)
+            remaining = self._open_orders_snapshot()
+            if remaining is None:
+                for item in active:
+                    self.repository.mark_protection(
+                        item["protection_id"], "UNKNOWN"
+                    )
+                self.repository.add_event(
+                    "PROTECTION_CANCEL_UNVERIFIED",
+                    {"symbol": symbol, "protection_count": len(active)},
+                    severity="ERROR",
+                )
+                return
+            for item in active:
+                status = (
+                    "ACTIVE"
+                    if item["cloid"].lower() in remaining
+                    else "CANCELED"
+                )
+                self.repository.mark_protection(item["protection_id"], status)
         except Exception as exc:
             self.repository.add_event(
                 "PROTECTION_CANCEL_FAILED",
@@ -591,12 +610,21 @@ class HyperliquidExecutionService:
                     {"error": type(exc).__name__},
                     severity="WARN",
                 )
+        open_orders = self._open_orders_snapshot()
+        verified_open_cloids = set(open_orders or {})
+        unknown_protection_cloids: set[str] = set()
         for protection in self.repository.protective_orders(
             statuses={"PENDING", "ACTIVE", "UNKNOWN"}
         ):
-            if protection["cloid"].lower() in filled_cloids:
+            protection_cloid = protection["cloid"].lower()
+            if protection_cloid in filled_cloids:
                 self.repository.mark_protection(
                     protection["protection_id"], "TRIGGERED"
+                )
+                continue
+            if open_orders is not None and protection_cloid in open_orders:
+                self.repository.mark_protection(
+                    protection["protection_id"], "ACTIVE"
                 )
                 continue
             try:
@@ -615,7 +643,15 @@ class HyperliquidExecutionService:
                     self.repository.mark_protection(
                         protection["protection_id"], mapped
                     )
+                    if exchange_status == "OPEN":
+                        verified_open_cloids.add(protection_cloid)
+                else:
+                    self.repository.mark_protection(
+                        protection["protection_id"], "UNKNOWN"
+                    )
+                    unknown_protection_cloids.add(protection_cloid)
             except Exception as exc:
+                unknown_protection_cloids.add(protection_cloid)
                 self.repository.add_event(
                     "PROTECTION_RECONCILIATION_FAILED",
                     {
@@ -625,7 +661,266 @@ class HyperliquidExecutionService:
                     cycle_id=protection["cycle_id"],
                     severity="ERROR",
                 )
+
+        live_positions = self._live_positions_snapshot()
+        if live_positions is None:
+            return results
+
+        active = self.repository.protective_orders(
+            statuses={"PENDING", "ACTIVE", "UNKNOWN"}
+        )
+        by_symbol: dict[str, list[dict[str, Any]]] = {}
+        for protection in active:
+            by_symbol.setdefault(protection["symbol"], []).append(protection)
+
+        for symbol, protections in by_symbol.items():
+            if symbol in live_positions:
+                continue
+            exchange_has_protection = open_orders is None or any(
+                item["cloid"].lower() in open_orders for item in protections
+            )
+            if exchange_has_protection:
+                self._cancel_exchange_protections(symbol)
+            else:
+                # A successful open-order snapshot plus a confirmed zero position is
+                # sufficient to archive stale local rows without sending a cancel for
+                # an order that no longer exists exchange-side.
+                self.repository.cancel_protections(symbol)
+                self.repository.add_event(
+                    "ORPHAN_PROTECTIONS_ARCHIVED",
+                    {
+                        "symbol": symbol,
+                        "protection_count": len(protections),
+                    },
+                    severity="INFO",
+                )
+
+        all_protections = self.repository.protective_orders()
+        for symbol, position in live_positions.items():
+            current_open = self.repository.latest_filled_open_intent(symbol)
+            current_parent_id = (
+                current_open["intent_id"] if current_open is not None else None
+            )
+            stop_rows = [
+                item
+                for item in all_protections
+                if item["symbol"] == symbol
+                and item["kind"] == "SL"
+                and item["parent_intent_id"] == current_parent_id
+            ]
+            if any(
+                item["cloid"].lower() in verified_open_cloids
+                for item in stop_rows
+            ):
+                continue
+            if open_orders is None and any(
+                item["cloid"].lower() in unknown_protection_cloids
+                for item in stop_rows
+            ):
+                # When the exchange cannot prove either presence or absence, do not
+                # risk placing a duplicate stop. A later monitor pass will retry the
+                # read, while the incident remains visible.
+                self.repository.add_event(
+                    "STOP_VERIFICATION_UNKNOWN",
+                    {"symbol": symbol},
+                    severity="ERROR",
+                )
+                continue
+            self._rearm_missing_stop(position)
         return results
+
+    def _open_orders_snapshot(self) -> dict[str, dict[str, Any]] | None:
+        query = getattr(self.info, "frontend_open_orders", None)
+        if not callable(query):
+            return None
+        try:
+            response = query(self.account_address)
+            if not isinstance(response, list):
+                raise ValueError("invalid frontend open-orders response")
+            return {
+                str(item.get("cloid") or "").lower(): item
+                for item in response
+                if isinstance(item, dict) and item.get("cloid")
+            }
+        except Exception as exc:
+            self.repository.add_event(
+                "OPEN_ORDER_SNAPSHOT_FAILED",
+                {"error": type(exc).__name__},
+                severity="ERROR",
+            )
+            return None
+
+    def _live_positions_snapshot(self) -> dict[str, dict[str, Any]] | None:
+        try:
+            state = self.info.user_state(self.account_address)
+            if not isinstance(state, dict):
+                raise ValueError("invalid user-state response")
+        except Exception as exc:
+            self.repository.add_event(
+                "POSITION_SNAPSHOT_FAILED",
+                {"error": type(exc).__name__},
+                severity="ERROR",
+            )
+            return None
+
+        positions: dict[str, dict[str, Any]] = {}
+        for wrapper in state.get("assetPositions", []):
+            if not isinstance(wrapper, dict):
+                continue
+            raw = wrapper.get("position", {})
+            if not isinstance(raw, dict):
+                continue
+            size = float(raw.get("szi") or 0)
+            symbol = str(raw.get("coin") or "")
+            if not symbol or size == 0:
+                continue
+            entry_px = float(raw.get("entryPx") or 0)
+            notional = abs(float(raw.get("positionValue") or 0))
+            if notional <= 0 and entry_px > 0:
+                notional = abs(size) * entry_px
+            positions[symbol] = {
+                "symbol": symbol,
+                "side": "LONG" if size > 0 else "SHORT",
+                "size": abs(size),
+                "notional_usd": notional,
+                "entry_px": entry_px,
+            }
+        return positions
+
+    def _rearm_missing_stop(self, position: dict[str, Any]) -> None:
+        symbol = position["symbol"]
+        metadata = self.repository.latest_filled_open_intent(symbol)
+        if metadata is None:
+            self.repository.add_event(
+                "STOP_REARM_BLOCKED",
+                {"symbol": symbol, "reason": "MISSING_OPEN_INTENT"},
+                severity="ERROR",
+            )
+            return
+        try:
+            opening_order = ApprovedOrder.model_validate(metadata["payload"])
+        except Exception as exc:
+            self.repository.add_event(
+                "STOP_REARM_BLOCKED",
+                {
+                    "symbol": symbol,
+                    "reason": "INVALID_OPEN_INTENT",
+                    "error": type(exc).__name__,
+                },
+                cycle_id=metadata["cycle_id"],
+                severity="ERROR",
+            )
+            return
+        if opening_order.direction != position["side"]:
+            self.repository.add_event(
+                "STOP_REARM_BLOCKED",
+                {"symbol": symbol, "reason": "POSITION_DIRECTION_MISMATCH"},
+                cycle_id=metadata["cycle_id"],
+                severity="ERROR",
+            )
+            return
+
+        size = self._round_size(symbol, float(position["size"]))
+        notional = float(position["notional_usd"])
+        if size <= 0 or notional <= 0:
+            self.repository.add_event(
+                "STOP_REARM_BLOCKED",
+                {"symbol": symbol, "reason": "POSITION_TOO_SMALL"},
+                cycle_id=metadata["cycle_id"],
+                severity="ERROR",
+            )
+            return
+
+        desired = opening_order.model_copy(update={"notional_usd": notional})
+        identity_base = (
+            f"{metadata['cloid']}|stop-rearm|{size:.12f}|"
+            f"{desired.invalidation_px:.8f}"
+        )
+        existing = self.repository.protective_orders(
+            parent_intent_id=metadata["intent_id"]
+        )
+        by_id = {item["protection_id"]: item for item in existing}
+        stop = None
+        for generation in range(1, 4):
+            identity = f"{identity_base}|generation:{generation}"
+            rearm_parent_cloid = "0x" + hashlib.sha256(
+                identity.encode("utf-8")
+            ).hexdigest()[:32]
+            candidate = next(
+                item
+                for item in build_protection_specs(desired, rearm_parent_cloid)
+                if item.kind == "SL"
+            )
+            previous = by_id.get(candidate.protection_id)
+            if previous is None:
+                stop = candidate
+                break
+            if previous["status"] in {"PENDING", "UNKNOWN", "ACTIVE"}:
+                # The deterministic desired-stop generation is the at-most-once
+                # boundary. An uncertain attempt is reconciled by CLOID and never
+                # resubmitted. Only a confirmed terminal generation unlocks the next.
+                return
+        if stop is None:
+            self.repository.add_event(
+                "STOP_REARM_BLOCKED",
+                {"symbol": symbol, "reason": "RETRY_LIMIT_REACHED"},
+                cycle_id=metadata["cycle_id"],
+                severity="ERROR",
+            )
+            return
+
+        self.repository.ensure_protective_orders(
+            metadata["intent_id"],
+            metadata["cycle_id"],
+            [stop],
+            "PENDING",
+        )
+        request = self._protection_request(
+            symbol,
+            position["side"] == "SHORT",
+            size,
+            stop,
+        )
+        if request is None:
+            self.repository.mark_protection(stop.protection_id, "SKIPPED_TOO_SMALL")
+            self.repository.add_event(
+                "STOP_REARM_BLOCKED",
+                {"symbol": symbol, "reason": "ORDER_SIZE_ROUNDED_TO_ZERO"},
+                cycle_id=metadata["cycle_id"],
+                severity="ERROR",
+            )
+            return
+
+        try:
+            response = self.exchange.order(**request)
+            submission = self._submission_status(response)
+        except Exception as exc:
+            self.repository.mark_protection(stop.protection_id, "UNKNOWN")
+            self.repository.add_event(
+                "STOP_REARM_SUBMISSION_UNKNOWN",
+                {"symbol": symbol, "error": type(exc).__name__},
+                cycle_id=metadata["cycle_id"],
+                severity="ERROR",
+            )
+            return
+
+        local_status = {
+            "OPEN": "ACTIVE",
+            "FILLED": "TRIGGERED",
+            "REJECTED": "REJECTED",
+        }.get(submission, "UNKNOWN")
+        self.repository.mark_protection(stop.protection_id, local_status)
+        self.repository.add_event(
+            "STOP_REARMED" if local_status == "ACTIVE" else "STOP_REARM_FAILED",
+            {
+                "symbol": symbol,
+                "status": local_status,
+                "size": size,
+                "trigger_px": stop.trigger_px,
+            },
+            cycle_id=metadata["cycle_id"],
+            severity="INFO" if local_status == "ACTIVE" else "ERROR",
+        )
 
     def positions(self) -> list[dict]:
         state = self.info.user_state(self.account_address)
@@ -756,14 +1051,24 @@ class HyperliquidExecutionService:
     def _reconciled_status(response: Any) -> str:
         if not isinstance(response, dict) or response.get("status") != "order":
             return "UNKNOWN"
-        order_status = str(response.get("orderStatus", "")).lower()
+        nested = response.get("order")
+        nested_status = (
+            nested.get("status") or nested.get("orderStatus")
+            if isinstance(nested, dict)
+            else None
+        )
+        order_status = str(
+            response.get("orderStatus") or nested_status or ""
+        ).lower()
         if order_status == "filled":
             return "FILLED"
         if order_status == "open":
             return "OPEN"
-        if order_status in {"canceled", "cancelled"}:
+        if order_status in {"canceled", "cancelled"} or order_status.endswith(
+            ("canceled", "cancelled")
+        ):
             return "CANCELED"
-        if order_status.endswith("canceled") or order_status in {"rejected", "expired"}:
+        if order_status in {"rejected", "expired"}:
             return "REJECTED"
         return "UNKNOWN"
 

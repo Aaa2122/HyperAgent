@@ -24,11 +24,22 @@ class FakeInfo:
     coin_to_asset = {"BTC": 0, "ETH": 1, "SOL": 2}
     asset_to_sz_decimals = {0: 5, 1: 4, 2: 2}
 
-    def __init__(self, *, account_value: float = 100, order_status: str = "filled", abstraction: str = "disabled"):
+    def __init__(
+        self,
+        *,
+        account_value: float = 100,
+        order_status: str = "filled",
+        abstraction: str = "disabled",
+    ):
         self.account_value = account_value
         self.order_status = order_status
         self.abstraction = abstraction
         self.queries = []
+        self.asset_positions = []
+        self.frontend_orders = []
+        self.frontend_orders_calls = 0
+        self.frontend_orders_fail_after = None
+        self.order_responses = {}
 
     def extra_agents(self, _account):
         return [{"address": Account.from_key(TEST_KEY).address, "name": "pytest"}]
@@ -40,8 +51,17 @@ class FakeInfo:
         return {
             "marginSummary": {"accountValue": str(self.account_value)},
             "withdrawable": str(self.account_value),
-            "assetPositions": [],
+            "assetPositions": self.asset_positions,
         }
+
+    def frontend_open_orders(self, _account):
+        self.frontend_orders_calls += 1
+        if (
+            self.frontend_orders_fail_after is not None
+            and self.frontend_orders_calls > self.frontend_orders_fail_after
+        ):
+            raise RuntimeError("open-order verification unavailable")
+        return self.frontend_orders
 
     def query_user_abstraction_state(self, _account):
         return self.abstraction
@@ -56,6 +76,8 @@ class FakeInfo:
 
     def query_order_by_cloid(self, account, cloid):
         self.queries.append((account, str(cloid)))
+        if str(cloid) in self.order_responses:
+            return self.order_responses[str(cloid)]
         return {"status": "order", "orderStatus": self.order_status}
 
 
@@ -318,3 +340,245 @@ def test_partial_fill_scales_remaining_take_profits_to_filled_size() -> None:
     assert primary_tp_size == 0.00019
     assert round(sum(remaining_sizes), 5) == 0.00006
     assert round(primary_tp_size + sum(remaining_sizes), 5) == 0.00025
+
+
+@pytest.mark.parametrize(
+    ("exchange_status", "expected"),
+    [
+        ("open", "OPEN"),
+        ("filled", "FILLED"),
+        ("siblingFilledCanceled", "CANCELED"),
+        ("reduceOnlyCanceled", "CANCELED"),
+        ("rejected", "REJECTED"),
+    ],
+)
+def test_reconciled_status_reads_nested_exchange_payload(
+    exchange_status: str,
+    expected: str,
+) -> None:
+    response = {
+        "status": "order",
+        "order": {
+            "status": exchange_status,
+            "order": {"coin": "BTC"},
+        },
+    }
+
+    assert HyperliquidTestnetExecutionService._reconciled_status(response) == expected
+
+
+def test_reconcile_archives_local_protections_when_position_and_orders_are_absent() -> None:
+    repo = repository()
+    info = FakeInfo()
+    exchange = FakeExchange(info)
+    service = executor(repo, exchange, info)
+    service.execute(order())
+
+    for protection in repo.protective_orders(symbol="BTC"):
+        info.order_responses[protection["cloid"]] = {"status": "unknownOid"}
+    info.frontend_orders = []
+    info.asset_positions = []
+
+    service.reconcile()
+
+    protections = repo.protective_orders(symbol="BTC")
+    assert protections
+    assert all(item["status"] == "CANCELED" for item in protections)
+    assert exchange.cancel_calls == []
+
+
+def test_cancel_ack_without_verification_never_claims_protections_are_canceled() -> None:
+    repo = repository()
+    info = FakeInfo()
+    exchange = FakeExchange(info)
+    service = executor(repo, exchange, info)
+    service.execute(order())
+
+    protections = repo.protective_orders(symbol="BTC")
+    info.frontend_orders = [
+        {"coin": "BTC", "cloid": item["cloid"]}
+        for item in protections
+    ]
+    info.frontend_orders_fail_after = 1
+    info.asset_positions = []
+
+    service.reconcile()
+
+    assert len(exchange.cancel_calls) == 1
+    assert all(
+        item["status"] == "UNKNOWN"
+        for item in repo.protective_orders(symbol="BTC")
+    )
+
+
+@pytest.mark.parametrize(
+    ("direction", "signed_size", "expected_is_buy"),
+    [("LONG", "0.00015", False), ("SHORT", "-0.00015", True)],
+)
+def test_reconcile_rearms_missing_stop_once_for_remaining_position(
+    direction: str,
+    signed_size: str,
+    expected_is_buy: bool,
+) -> None:
+    repo = repository()
+    info = FakeInfo()
+    exchange = FakeExchange(info)
+    service = executor(repo, exchange, info)
+    opening = order()
+    if direction == "SHORT":
+        opening = opening.model_copy(
+            update={
+                "direction": "SHORT",
+                "invalidation_px": 66_500,
+                "targets": [64_000, 63_000, 62_000],
+            }
+        )
+    service.execute(opening)
+
+    initial = repo.protective_orders(symbol="BTC")
+    old_stop = next(item for item in initial if item["kind"] == "SL")
+    take_profits = [item for item in initial if item["kind"] == "TP"]
+    info.asset_positions = [
+        {
+            "position": {
+                "coin": "BTC",
+                "szi": signed_size,
+                "entryPx": "65000",
+                "positionValue": "9.75",
+            }
+        }
+    ]
+    info.frontend_orders = [
+        {"coin": "BTC", "cloid": item["cloid"]}
+        for item in take_profits
+    ]
+    info.order_responses[old_stop["cloid"]] = {
+        "status": "order",
+        "order": {
+            "status": "siblingFilledCanceled",
+            "order": {"coin": "BTC"},
+        },
+    }
+    exchange.response = {
+        "status": "ok",
+        "response": {"data": {"statuses": [{"resting": {"oid": 99}}]}},
+    }
+
+    service.reconcile()
+
+    stops = [
+        item for item in repo.protective_orders(symbol="BTC")
+        if item["kind"] == "SL"
+    ]
+    assert len(stops) == 2
+    assert next(item for item in stops if item["protection_id"] == old_stop["protection_id"])[
+        "status"
+    ] == "CANCELED"
+    rearmed = next(item for item in stops if item["protection_id"] != old_stop["protection_id"])
+    assert rearmed["status"] == "ACTIVE"
+    assert len(exchange.calls) == 1
+    _, request = exchange.calls[0]
+    assert request["coin"] == "BTC"
+    assert request["is_buy"] is expected_is_buy
+    assert request["reduce_only"] is True
+    assert request["sz"] == 0.00015
+
+    info.frontend_orders.append({"coin": "BTC", "cloid": rearmed["cloid"]})
+    info.order_responses[rearmed["cloid"]] = {
+        "status": "order",
+        "order": {"status": "open", "order": {"coin": "BTC"}},
+    }
+    service.reconcile()
+
+    assert len(exchange.calls) == 1
+    assert len(
+        [
+            item for item in repo.protective_orders(symbol="BTC")
+            if item["kind"] == "SL"
+        ]
+    ) == 2
+
+    info.frontend_orders = [
+        item
+        for item in info.frontend_orders
+        if item["cloid"] != rearmed["cloid"]
+    ]
+    info.order_responses[rearmed["cloid"]] = {
+        "status": "order",
+        "order": {
+            "status": "reduceOnlyCanceled",
+            "order": {"coin": "BTC"},
+        },
+    }
+    service.reconcile()
+
+    stops = [
+        item for item in repo.protective_orders(symbol="BTC")
+        if item["kind"] == "SL"
+    ]
+    assert len(exchange.calls) == 2
+    assert len(stops) == 3
+    second_rearm = next(
+        item
+        for item in stops
+        if item["protection_id"]
+        not in {old_stop["protection_id"], rearmed["protection_id"]}
+    )
+    assert second_rearm["status"] == "ACTIVE"
+
+    info.frontend_orders.append(
+        {"coin": "BTC", "cloid": second_rearm["cloid"]}
+    )
+    service.reconcile()
+
+    assert len(exchange.calls) == 2
+
+
+def test_stop_rearm_unknown_ack_is_never_resubmitted() -> None:
+    repo = repository()
+    info = FakeInfo()
+    exchange = FakeExchange(info)
+    service = executor(repo, exchange, info)
+    service.execute(order())
+
+    initial = repo.protective_orders(symbol="BTC")
+    old_stop = next(item for item in initial if item["kind"] == "SL")
+    info.asset_positions = [
+        {
+            "position": {
+                "coin": "BTC",
+                "szi": "0.00015",
+                "entryPx": "65000",
+                "positionValue": "9.75",
+            }
+        }
+    ]
+    info.frontend_orders = [
+        {"coin": "BTC", "cloid": item["cloid"]}
+        for item in initial
+        if item["kind"] == "TP"
+    ]
+    info.order_responses[old_stop["cloid"]] = {
+        "status": "order",
+        "order": {
+            "status": "siblingFilledCanceled",
+            "order": {"coin": "BTC"},
+        },
+    }
+    exchange.error = TimeoutError("lost stop ACK")
+
+    service.reconcile()
+
+    rearmed = next(
+        item
+        for item in repo.protective_orders(symbol="BTC")
+        if item["kind"] == "SL" and item["protection_id"] != old_stop["protection_id"]
+    )
+    assert rearmed["status"] == "UNKNOWN"
+    assert len(exchange.calls) == 1
+
+    exchange.error = None
+    info.order_responses[rearmed["cloid"]] = {"status": "unknownOid"}
+    service.reconcile()
+
+    assert len(exchange.calls) == 1
