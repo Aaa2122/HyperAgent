@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 11% 4%;
+    --foreground: 0 0% 98%;
+    --card: 240 7% 8%;
+    --card-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 240 11% 4%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 94%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 4% 55%;
+    --accent: 240 5% 15%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 3 100% 63%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 0 0% 88%;
+    --radius: 1rem;
+  }
+
+  * { @apply border-border; }
+  html, body, #root { max-width: 100%; overflow-x: hidden; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", sans-serif;
+    font-feature-settings: "ss01", "cv01";
+  }
+  button, a { -webkit-tap-highlight-color: transparent; }
+  button, a, summary { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#08080a]; }
+  ::selection { background: rgba(255, 255, 255, .18); }
+}
+
+@layer components {
+  .glass-panel {
+    @apply rounded-[26px] border border-white/[.075] bg-white/[.035] shadow-[0_30px_80px_rgba(0,0,0,.24)] backdrop-blur-2xl;
+  }
+  .workspace-panel {
+    @apply min-h-[calc(100vh-132px)] border-t border-white/[.06] bg-transparent px-1 py-6 sm:px-2 sm:py-8;
+  }
+  .workspace-panel details {
+    border-radius: 0 !important;
+    border-width: 0 0 1px 0 !important;
+    border-color: rgba(255,255,255,.065) !important;
+    background: transparent !important;
+    padding: 14px 4px !important;
+  }
+  .workspace-panel details:hover { background: rgba(255,255,255,.018) !important; }
+  .workspace-panel article { box-shadow: none !important; }
+  .nav-tab { transition: color .22s ease, background-color .22s ease, transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease; }
+  .nav-tab:hover { transform: translateY(-1px); }
+  .nav-tab:active { transform: scale(.985); }
+  .nav-tab.active { animation: soft-pop .28s cubic-bezier(.2,.8,.2,1); }
+  .panel-enter { animation: panel-enter .34s cubic-bezier(.2,.8,.2,1) both; }
+  .toast-enter { animation: toast-enter .32s cubic-bezier(.2,.8,.2,1) both; }
+  .hover-lift { border-radius: 0 !important; border-width: 0 0 1px !important; border-color: rgba(255,255,255,.065) !important; background: transparent !important; transition: color .2s ease, background-color .2s ease; }
+  .hover-lift:hover { background: rgba(255,255,255,.018) !important; }
+  .eyebrow {
+    @apply text-[9px] font-semibold uppercase tracking-[.19em] text-white/30;
+  }
+}
+
+@keyframes panel-enter { from { opacity: 0; transform: translateY(8px) scale(.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes toast-enter { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes soft-pop { 0% { transform: scale(.97); } 100% { transform: scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
