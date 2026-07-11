@@ -477,11 +477,11 @@ def test_reconcile_rearms_missing_stop_once_for_remaining_position(
     rearmed = next(item for item in stops if item["protection_id"] != old_stop["protection_id"])
     assert rearmed["status"] == "ACTIVE"
     assert len(exchange.calls) == 1
-    _, request = exchange.calls[0]
-    assert request["coin"] == "BTC"
-    assert request["is_buy"] is expected_is_buy
-    assert request["reduce_only"] is True
-    assert request["sz"] == 0.00015
+    args, kwargs = exchange.calls[0]
+    assert args[0] == "BTC"
+    assert args[1] is expected_is_buy
+    assert kwargs["reduce_only"] is True
+    assert args[2] == 0.00015
 
     info.frontend_orders.append({"coin": "BTC", "cloid": rearmed["cloid"]})
     info.order_responses[rearmed["cloid"]] = {
@@ -534,7 +534,7 @@ def test_reconcile_rearms_missing_stop_once_for_remaining_position(
     assert len(exchange.calls) == 2
 
 
-def test_stop_rearm_unknown_ack_is_never_resubmitted() -> None:
+def test_stop_rearm_unknown_ack_waits_for_confirmed_absence_before_retry() -> None:
     repo = repository()
     info = FakeInfo()
     exchange = FakeExchange(info)
@@ -578,7 +578,14 @@ def test_stop_rearm_unknown_ack_is_never_resubmitted() -> None:
     assert len(exchange.calls) == 1
 
     exchange.error = None
+    exchange.response = {
+        "status": "ok",
+        "response": {"data": {"statuses": [{"resting": {"oid": 100}}]}},
+    }
     info.order_responses[rearmed["cloid"]] = {"status": "unknownOid"}
     service.reconcile()
 
-    assert len(exchange.calls) == 1
+    assert len(exchange.calls) == 2
+    first_cloid = str(exchange.calls[0][1]["cloid"])
+    second_cloid = str(exchange.calls[1][1]["cloid"])
+    assert first_cloid != second_cloid

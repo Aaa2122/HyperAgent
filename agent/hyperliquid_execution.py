@@ -366,7 +366,9 @@ class HyperliquidExecutionService:
                         order.symbol, not is_buy, size, spec
                     )
                     if retry_request is not None:
-                        retry_response = self.exchange.order(**retry_request)
+                        retry_response = self._submit_protection_request(
+                            retry_request
+                        )
                         child_status = self._submission_status(retry_response)
                 self.repository.mark_protection(
                     spec.protection_id,
@@ -465,6 +467,18 @@ class HyperliquidExecutionService:
             "reduce_only": True,
             "cloid": Cloid.from_str(spec.cloid),
         }
+
+    def _submit_protection_request(self, request: dict[str, Any]) -> Any:
+        """Adapt a bulk-order request to the SDK's single-order signature."""
+        return self.exchange.order(
+            request["coin"],
+            request["is_buy"],
+            request["sz"],
+            request["limit_px"],
+            request["order_type"],
+            reduce_only=request["reduce_only"],
+            cloid=request["cloid"],
+        )
 
     def _protection_size(
         self, symbol: str, full_size: float, fraction: float
@@ -645,6 +659,22 @@ class HyperliquidExecutionService:
                     )
                     if exchange_status == "OPEN":
                         verified_open_cloids.add(protection_cloid)
+                elif open_orders is not None:
+                    # The CLOID is absent from both queryOrderByCloid and the
+                    # complete open-order snapshot. This generation is terminal,
+                    # so a missing stop may safely use a new deterministic CLOID.
+                    self.repository.mark_protection(
+                        protection["protection_id"], "CANCELED"
+                    )
+                    self.repository.add_event(
+                        "PROTECTION_MISSING_CONFIRMED",
+                        {
+                            "protection_id": protection["protection_id"],
+                            "symbol": protection["symbol"],
+                        },
+                        cycle_id=protection["cycle_id"],
+                        severity="WARN",
+                    )
                 else:
                     self.repository.mark_protection(
                         protection["protection_id"], "UNKNOWN"
@@ -892,7 +922,7 @@ class HyperliquidExecutionService:
             return
 
         try:
-            response = self.exchange.order(**request)
+            response = self._submit_protection_request(request)
             submission = self._submission_status(response)
         except Exception as exc:
             self.repository.mark_protection(stop.protection_id, "UNKNOWN")
