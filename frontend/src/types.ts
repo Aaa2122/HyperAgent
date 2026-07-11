@@ -5,6 +5,11 @@ export type MarketAsset = {
   adx_4h: number;
   funding_1h_pct: number;
   data_age_seconds: number;
+  donchian_pos_4h?: number;
+  dist_ema20_4h_atr?: number;
+  rv_24h_ann_pct?: number;
+  oi_usd?: number;
+  spread_bps?: number;
 };
 
 export type Cycle = {
@@ -51,7 +56,20 @@ export type Cycle = {
     decision?: {
       provider: string;
       playbook: {
-        payload: { regime_view: string; changes_vs_previous: string };
+        payload: {
+          regime_view: string;
+          changes_vs_previous: string;
+          plans?: Array<{
+            symbol: string;
+            bias: "LONG" | "SHORT" | "FLAT";
+            conviction: number;
+            thesis: string;
+            entry_zone?: [number, number] | null;
+            invalidation_px?: number | null;
+            targets: number[];
+            risk_alloc: number;
+          }>;
+        };
       };
       trader: { decisions: AgentDecision[] };
       initial_trader?: { decisions: AgentDecision[] };
@@ -119,7 +137,15 @@ export type DashboardData = {
   paper_equity_usd: number;
   market_provider: string;
   market_quality_warnings: string[];
-  universe_scan?: Array<{ symbol: string; score: number; spread_bps: number; ret_4h_pct: number; oi_usd: number; selected: boolean; reason: string }>;
+  universe_scan?: Array<{
+    symbol: string;
+    score: number;
+    spread_bps: number;
+    ret_4h_pct: number;
+    oi_usd: number;
+    selected: boolean;
+    reason: string;
+  }>;
   hyperliquid_network: string;
   hyperliquid_execution_network: string;
   hyperliquid_account_configured: boolean;

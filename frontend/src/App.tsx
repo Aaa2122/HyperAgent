@@ -20,6 +20,7 @@ import { PnlChart } from "@/components/PnlChart";
 import { PositionChart } from "@/components/PositionChart";
 import { PositionsPanel } from "@/components/PositionsPanel";
 import { DecisionPipeline } from "@/components/DecisionPipeline";
+import { GrokIntelligenceMap } from "@/components/GrokIntelligenceMap";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
@@ -159,7 +160,7 @@ export default function App() {
     data?.positions.reduce((sum, item) => sum + item.notional_usd, 0) ?? 0;
   const activeProtections =
     data?.protections.filter((item) => item.status === "ACTIVE") ?? [];
-  const latest = data?.cycles[0];
+  const latest = data?.cycles.find((cycle) => cycle.state.decision);
   const assets = latest?.state.market_snapshot?.assets ?? [];
   const decisions = latest?.state.decision?.trader.decisions ?? [];
   const healthy =
@@ -617,12 +618,32 @@ function AgentPanel({
         title="Intelligence & journal"
         subtitle="Chaque recherche, décision, contrôle et coût est consultable au même endroit."
       />
+      <GrokIntelligenceMap latest={latest} />
       <DecisionPipeline decision={latest?.state.decision} />
       <div className="mt-6 grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
         <div>
           <div className="mb-5 border-y border-white/[.06] py-4">
-            <div className="mb-3 flex items-center justify-between"><p className="eyebrow">Scanner d’univers</p><span className="text-[10px] text-white/30">{data?.universe_scan?.filter((item) => item.selected).length ?? 0} transmis à Grok</span></div>
-            <div className="flex flex-wrap gap-2">{data?.universe_scan?.map((item) => <span key={item.symbol} title={`Score ${item.score.toFixed(2)} · spread ${item.spread_bps.toFixed(2)} bps · ${item.reason}`} className={`rounded-full px-3 py-1.5 text-[10px] ${item.selected ? "bg-[#64d2ff]/10 text-[#64d2ff]" : "bg-white/[.035] text-white/25"}`}>{item.symbol}<b className="ml-1.5 font-mono">{item.score.toFixed(2)}</b>{item.selected && " ✓"}</span>)}</div>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="eyebrow">Scanner d’univers</p>
+              <span className="text-[10px] text-white/30">
+                {data?.universe_scan?.filter((item) => item.selected).length ??
+                  0}{" "}
+                transmis à Grok
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {data?.universe_scan?.map((item) => (
+                <span
+                  key={item.symbol}
+                  title={`Score ${item.score.toFixed(2)} · spread ${item.spread_bps.toFixed(2)} bps · ${item.reason}`}
+                  className={`rounded-full px-3 py-1.5 text-[10px] ${item.selected ? "bg-[#64d2ff]/10 text-[#64d2ff]" : "bg-white/[.035] text-white/25"}`}
+                >
+                  {item.symbol}
+                  <b className="ml-1.5 font-mono">{item.score.toFixed(2)}</b>
+                  {item.selected && " ✓"}
+                </span>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <MetricCard
@@ -677,9 +698,18 @@ function AgentPanel({
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs">
                   <span className="font-medium">
                     {call.stage}{" "}
-                    <span className="ml-2 text-white/30">{call.status}{call.skipped_reason ? ` · ${call.skipped_reason.replaceAll("_", " ")}` : ""}</span>
+                    <span className="ml-2 text-white/30">
+                      {call.status}
+                      {call.skipped_reason
+                        ? ` · ${call.skipped_reason.replaceAll("_", " ")}`
+                        : ""}
+                    </span>
                   </span>
                   <span className="font-mono text-white/40">
+                    <span className="mr-3 text-white/25">
+                      {new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(call.created_at))}
+                      {" · "}
+                    </span>
                     {usd.format(call.cost_usd)} · {call.latency_ms} ms
                   </span>
                 </summary>
