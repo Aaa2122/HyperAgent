@@ -50,4 +50,34 @@ def test_automation_scheduler_runs_cycles_and_risk_monitor() -> None:
     status = scheduler.status()
     assert status["running"] is False
     assert status["last_cycle_status"] == "COMPLETED"
+    assert status["last_cycle_duration_seconds"] is not None
+    assert status["last_cycle_duration_seconds"] >= 0
+    assert status["next_cycle_at"] is None
+    assert status["server_time"]
+    assert status["phase"] in {"WAITING", "RUNNING"}
     assert status["last_risk_monitor_status"] == "OK:0"
+
+
+def test_interval_change_recomputes_deadline_and_wakes_waiter() -> None:
+    settings = Settings(
+        _env_file=None,
+        automation_enabled=True,
+        llm_provider="rules",
+    )
+    settings.cycle_interval_seconds = 0.5
+    settings.risk_monitor_interval_seconds = 0.2
+    service = FakeService()
+    scheduler = AutomationScheduler(service, settings)
+
+    scheduler.start()
+    time.sleep(0.08)
+    assert service.cycles == 1
+    previous_deadline = scheduler.status()["next_cycle_at"]
+
+    scheduler.configure(cycle_interval_seconds=0.02)
+    time.sleep(0.07)
+    scheduler.stop()
+
+    assert service.cycles >= 2
+    assert scheduler.status()["next_cycle_at"] is None
+    assert previous_deadline is not None

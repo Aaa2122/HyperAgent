@@ -57,6 +57,7 @@ def test_paper_cycle_is_end_to_end_and_does_not_reopen_positions() -> None:
     service = AgentService(settings())
     first = service.run_cycle()
     assert first["status"] == "COMPLETED"
+    assert service.activity_status()["phase"] == "WAITING"
     assert first["market_snapshot"]["assets"]
     assert len(first["executions"]) >= 1
     assert all(item["status"] == "FILLED" for item in first["executions"])
@@ -77,6 +78,34 @@ def test_kill_switch_stops_cycle_before_market_data() -> None:
     assert result["status"] == "SKIPPED"
     assert "market_snapshot" not in result
     assert service.dashboard()["intents"] == []
+
+
+def test_scheduled_cycle_explains_operator_pause_without_starting_graph() -> None:
+    service = AgentService(settings())
+    service.repository.transition_kill_switch(
+        KillSwitchState.PAUSED, "Operator pause for scheduler test", "pytest"
+    )
+
+    result = service.run_scheduled_cycle()
+
+    assert result["status"] == "SKIPPED"
+    assert result["policy"]["reason"] == "KILL_SWITCH_PAUSED"
+    assert service.activity_status()["phase"] == "WAITING"
+    assert service.activity_status()["phase_detail"] == "KILL_SWITCH_PAUSED"
+
+
+def test_scheduled_cycle_uses_event_reason_when_market_did_not_change() -> None:
+    service = AgentService(settings())
+    first = service.run_scheduled_cycle()
+    assert first["status"] == "COMPLETED"
+
+    second = service.run_scheduled_cycle()
+
+    assert second["status"] == "SKIPPED"
+    assert second["policy"]["event_reason"] == "NO_MATERIAL_CHANGE"
+    latest_call = service.dashboard()["llm_calls"][0]
+    assert latest_call["stage"] == "cycle_policy"
+    assert latest_call["skipped_reason"] == "NO_MATERIAL_CHANGE"
 
 
 def test_decision_key_is_at_most_once() -> None:
@@ -161,6 +190,11 @@ def test_api_cycle_and_dashboard() -> None:
         dashboard = client.get("/api/dashboard").json()
         assert dashboard["cycles"][0]["status"] == "COMPLETED"
         assert dashboard["mode"] == "paper"
+        assert dashboard["automation"]["phase"] == "WAITING"
+        assert dashboard["automation"]["server_time"]
+        runtime = client.get("/api/automation/status")
+        assert runtime.status_code == 200
+        assert runtime.json()["phase"] == "WAITING"
 
 
 def test_halted_cannot_be_resumed_from_dashboard() -> None:

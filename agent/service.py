@@ -10,6 +10,7 @@ from llm_checks import LLMLayerConfig
 from agent.config import AgentMode, Settings
 from agent.db import build_engine, build_session_factory
 from agent.decision import GrokDecisionProvider, RuleBasedDecisionProvider
+from agent.domain import KillSwitchState
 from agent.execution import PaperExecutionService
 from agent.graph import GraphDependencies, build_graph
 from agent.guardrails import GuardrailEngine
@@ -31,6 +32,12 @@ class AgentService:
         self.repository = Repository(engine, build_session_factory(engine))
         self.repository.initialize()
         self._cycle_lock = threading.Lock()
+        self._activity_lock = threading.Lock()
+        self._activity: dict = {
+            "phase": "WAITING",
+            "phase_started_at": datetime.now(timezone.utc).isoformat(),
+            "phase_detail": "Service initialisé",
+        }
         self._risk_snapshot: dict = {"status": "INITIALIZING", "positions": []}
         self._readiness_cache: tuple[float, dict] | None = None
         self._analytics_cache: tuple[float, dict] | None = None
@@ -199,8 +206,21 @@ class AgentService:
                 decisions=decisions,
                 guardrails=GuardrailEngine(guardrail_config),
                 execution=execution,
+                activity_callback=self.set_activity,
         )
         self.graph = build_graph(self.graph_dependencies)
+
+    def set_activity(self, phase: str, detail: str | None = None) -> None:
+        with self._activity_lock:
+            self._activity = {
+                "phase": phase,
+                "phase_started_at": datetime.now(timezone.utc).isoformat(),
+                "phase_detail": detail,
+            }
+
+    def activity_status(self) -> dict:
+        with self._activity_lock:
+            return dict(self._activity)
 
     def run_cycle(
         self, *, allow_external_research: bool = True,
@@ -208,11 +228,21 @@ class AgentService:
     ) -> dict:
         if not self._cycle_lock.acquire(blocking=False):
             raise RuntimeError("a cycle is already running")
+        self.set_activity("PREPARING", "Démarrage d’un nouveau cycle")
         try:
-            return self._run_cycle(
+            result = self._run_cycle(
                 allow_external_research=allow_external_research,
                 allow_strategist_refresh=allow_strategist_refresh,
             )
+        except Exception as exc:
+            self.set_activity(
+                "BLOCKED",
+                f"{type(exc).__name__}: {str(exc)[:180]}",
+            )
+            raise
+        else:
+            self.set_activity("WAITING", "Cycle terminé")
+            return result
         finally:
             self._cycle_lock.release()
 
@@ -276,9 +306,11 @@ class AgentService:
             policy.update(event_policy)
             policy["run"] = event_policy["run"]
         if not policy["run"]:
+            effective_reason = policy.get("event_reason") or policy["reason"]
+            self.set_activity("WAITING", effective_reason)
             self.repository.record_llm_call({
                 "stage": "cycle_policy", "provider": "system", "model": "deterministic",
-                "status": "SKIPPED", "skipped_reason": policy["reason"],
+                "status": "SKIPPED", "skipped_reason": effective_reason,
                 "response": policy,
             })
             self.repository.add_event("LLM_CYCLE_SKIPPED", policy)
@@ -290,7 +322,11 @@ class AgentService:
         self._last_llm_cycle_at = time.monotonic()
         self._last_llm_marks = self.market.marks()
         self._material_event_pending = False
-        return result
+        self.set_activity(
+            "WAITING",
+            policy.get("event_reason") or policy.get("reason") or "Cycle terminé",
+        )
+        return {**result, "policy": policy}
 
     def _event_cycle_policy(self) -> dict:
         marks = self.market.marks()
@@ -309,6 +345,15 @@ class AgentService:
                 "max_interval_seconds": self.settings.trader_max_interval_seconds}
 
     def scheduled_cycle_policy(self) -> dict:
+        kill_switch = self.repository.current_kill_switch()
+        if kill_switch is not KillSwitchState.RUNNING:
+            return {
+                "run": False,
+                "external_research": False,
+                "strategist_refresh": False,
+                "reason": f"KILL_SWITCH_{kill_switch.value}",
+                "risk_monitor_continues": True,
+            }
         if self.settings.agent_mode not in {AgentMode.TESTNET, AgentMode.LIVE}:
             return {"run": True, "external_research": True,
                     "strategist_refresh": True, "reason": "NON_LIVE_MODE"}

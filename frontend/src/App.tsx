@@ -19,8 +19,7 @@ import {
 import { PnlChart } from "@/components/PnlChart";
 import { PositionChart } from "@/components/PositionChart";
 import { PositionsPanel } from "@/components/PositionsPanel";
-import { DecisionPipeline } from "@/components/DecisionPipeline";
-import { GrokIntelligenceMap } from "@/components/GrokIntelligenceMap";
+import { AgentWorkspace } from "@/components/AgentWorkspace";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
@@ -110,6 +109,32 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("dashboard-view", view);
   }, [view]);
+
+  useEffect(() => {
+    if (view !== "agent") return;
+    let cancelled = false;
+    const refreshRuntime = async () => {
+      if (document.hidden) return;
+      try {
+        const response = await fetch("/api/automation/status");
+        if (!response.ok) return;
+        const automation = await response.json();
+        if (!cancelled)
+          setData((current) =>
+            current ? { ...current, automation } : current,
+          );
+      } catch {
+        // The full dashboard refresh owns error reporting; this lightweight
+        // poll must never replace otherwise valid cached data.
+      }
+    };
+    void refreshRuntime();
+    const timer = window.setInterval(() => void refreshRuntime(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [view]);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (["INPUT", "TEXTAREA"].includes((event.target as HTMLElement).tagName))
@@ -166,8 +191,18 @@ export default function App() {
   const healthy =
     readiness?.ready_for_orders && data?.kill_switch === "RUNNING";
   const nextCycle = useMemo(() => {
-    if (!data?.automation?.last_cycle_finished_at || !data.automation.running)
-      return "—";
+    if (!data?.automation?.running) return "—";
+    if (
+      data.automation.phase &&
+      !["WAITING", "PAUSED", "BLOCKED"].includes(data.automation.phase)
+    )
+      return "En cours";
+    if (data.automation.next_cycle_at)
+      return new Date(data.automation.next_cycle_at).toLocaleTimeString(
+        "fr-FR",
+        { hour: "2-digit", minute: "2-digit" },
+      );
+    if (!data.automation.last_cycle_finished_at) return "Imminent";
     return new Date(
       new Date(data.automation.last_cycle_finished_at).getTime() +
         data.automation.cycle_interval_seconds * 1000,
@@ -618,118 +653,7 @@ function AgentPanel({
         title="Intelligence & journal"
         subtitle="Chaque recherche, décision, contrôle et coût est consultable au même endroit."
       />
-      <GrokIntelligenceMap latest={latest} />
-      <DecisionPipeline decision={latest?.state.decision} />
-      <div className="mt-6 grid gap-6 xl:grid-cols-[.8fr_1.2fr]">
-        <div>
-          <div className="mb-5 border-y border-white/[.06] py-4">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="eyebrow">Scanner d’univers</p>
-              <span className="text-[10px] text-white/30">
-                {data?.universe_scan?.filter((item) => item.selected).length ??
-                  0}{" "}
-                transmis à Grok
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {data?.universe_scan?.map((item) => (
-                <span
-                  key={item.symbol}
-                  title={`Score ${item.score.toFixed(2)} · spread ${item.spread_bps.toFixed(2)} bps · ${item.reason}`}
-                  className={`rounded-full px-3 py-1.5 text-[10px] ${item.selected ? "bg-[#64d2ff]/10 text-[#64d2ff]" : "bg-white/[.035] text-white/25"}`}
-                >
-                  {item.symbol}
-                  <b className="ml-1.5 font-mono">{item.score.toFixed(2)}</b>
-                  {item.selected && " ✓"}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <MetricCard
-              label="Coût aujourd’hui"
-              value={usd.format(data?.llm_costs?.today_usd ?? 0)}
-            />
-            <MetricCard
-              label="Appels / évités"
-              value={`${data?.llm_costs?.call_count ?? 0} / ${data?.llm_costs?.skipped_count ?? 0}`}
-            />
-            <MetricCard
-              label="Tokens entrée"
-              value={number.format(data?.llm_costs?.input_tokens ?? 0)}
-            />
-            <MetricCard
-              label="Tokens cache"
-              value={number.format(data?.llm_costs?.cached_tokens ?? 0)}
-            />
-          </div>
-          <div className="mt-4 rounded-2xl bg-white/[.035] p-4">
-            <p className="text-xs font-medium">Lecture du stratège</p>
-            <p className="mt-2 text-[11px] leading-relaxed text-white/45">
-              {latest?.state.decision?.playbook?.payload?.regime_view ??
-                "Aucune analyse disponible"}
-            </p>
-          </div>
-          <div className="mt-3 space-y-2">
-            {latest?.state.research?.signals?.map((signal) => (
-              <details
-                key={signal.symbol}
-                className="rounded-xl bg-white/[.035] px-4 py-3"
-              >
-                <summary className="cursor-pointer list-none text-xs font-medium">
-                  {signal.symbol} · {signal.direction} ·{" "}
-                  {(signal.confidence * 100).toFixed(0)}%
-                </summary>
-                <p className="mt-2 text-[11px] text-white/45">
-                  {signal.summary}
-                </p>
-              </details>
-            ))}
-          </div>
-        </div>
-        <div className="min-h-0">
-          <p className="eyebrow mb-3">Chronologie des appels</p>
-          <div className="max-h-[650px] space-y-2 overflow-y-auto pr-1">
-            {data?.llm_calls?.map((call) => (
-              <details
-                key={call.call_id}
-                className="rounded-xl border border-white/[.06] bg-white/[.025] px-4 py-3"
-              >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-xs">
-                  <span className="font-medium">
-                    {call.stage}{" "}
-                    <span className="ml-2 text-white/30">
-                      {call.status}
-                      {call.skipped_reason
-                        ? ` · ${call.skipped_reason.replaceAll("_", " ")}`
-                        : ""}
-                    </span>
-                  </span>
-                  <span className="font-mono text-white/40">
-                    <span className="mr-3 text-white/25">
-                      {new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(call.created_at))}
-                      {" · "}
-                    </span>
-                    {usd.format(call.cost_usd)} · {call.latency_ms} ms
-                  </span>
-                </summary>
-                <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-[10px] leading-relaxed text-white/40">
-                  {JSON.stringify(
-                    {
-                      prompt: call.prompt,
-                      réponse: call.response,
-                      outils: call.tool_usage,
-                      raison: call.skipped_reason,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              </details>
-            ))}
-          </div>
-        </div>
-      </div>
+      <AgentWorkspace data={data} latest={latest} />
     </div>
   );
 }

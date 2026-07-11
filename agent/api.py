@@ -65,6 +65,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def set_automation(command: AutomationCommand) -> dict:
         return scheduler.configure(**command.model_dump())
 
+    @app.get("/api/automation/status")
+    def automation_status() -> dict:
+        return scheduler.status()
+
     @app.get("/api/integrations/hyperliquid/readiness")
     def hyperliquid_readiness() -> dict:
         try:

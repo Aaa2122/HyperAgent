@@ -202,6 +202,13 @@ export type DashboardData = {
     last_cycle_started_at?: string | null;
     last_cycle_finished_at?: string | null;
     last_cycle_status: string | null;
+    last_cycle_duration_seconds?: number | null;
+    last_cycle_reason?: string | null;
+    next_cycle_at?: string | null;
+    server_time?: string;
+    phase?: string;
+    phase_started_at?: string | null;
+    phase_detail?: string | null;
     last_risk_monitor_status: string | null;
   };
   events: Array<{

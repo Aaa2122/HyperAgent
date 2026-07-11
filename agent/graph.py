@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import Callable, Literal, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -56,10 +56,16 @@ class GraphDependencies:
     decisions: DecisionProvider
     guardrails: GuardrailEngine
     execution: ExecutionService
+    activity_callback: Callable[[str, str | None], None] | None = None
 
 
 def build_graph(deps: GraphDependencies):
+    def activity(phase: str, detail: str | None = None) -> None:
+        if deps.activity_callback:
+            deps.activity_callback(phase, detail)
+
     def check_killswitch(state: AgentState) -> dict:
+        activity("PREPARING", "Vérification des conditions d’exécution")
         current = deps.repository.current_kill_switch()
         deps.repository.add_event(
             "KILL_SWITCH_READ",
@@ -72,6 +78,7 @@ def build_graph(deps: GraphDependencies):
         return "ingest" if state["kill_switch_state"] == "RUNNING" else "finalize"
 
     def ingest(_: AgentState) -> dict:
+        activity("MARKET_DATA", "Synchronisation des prix et de la liquidité")
         return {
             "market_source": deps.market.name,
             "market_quality_warnings": deps.market.quality_warnings,
@@ -79,6 +86,7 @@ def build_graph(deps: GraphDependencies):
         }
 
     def research_node(state: AgentState) -> dict:
+        activity("RESEARCH", "Recherche de catalyseurs et signaux externes")
         feature_sheet = FeatureSheet.model_validate(state["market_snapshot"])
         try:
             bundle = deps.research.research(
@@ -101,11 +109,13 @@ def build_graph(deps: GraphDependencies):
             }
 
     def strategies_node(state: AgentState) -> dict:
+        activity("ANALYSIS", "Calcul des signaux techniques et du régime")
         sheet = FeatureSheet.model_validate(state["market_snapshot"])
         signals = run_strategies(sheet, deps.strategies)
         return {"strategy_signals": [s.model_dump(mode="json") for s in signals]}
 
     def decide_node(state: AgentState) -> dict:
+        activity("DECISION", "Construction et révision du plan de trading")
         sheet = FeatureSheet.model_validate(state["market_snapshot"])
         signals = [StrategySignal.model_validate(s) for s in state["strategy_signals"]]
         research = ResearchBundle.model_validate(state["research"])
@@ -154,6 +164,7 @@ def build_graph(deps: GraphDependencies):
         return {"decision": bundle.model_dump(mode="json")}
 
     def guardrails_node(state: AgentState) -> dict:
+        activity("VALIDATION", "Simulation des conséquences opérationnelles")
         sheet = FeatureSheet.model_validate(state["market_snapshot"])
         decision = DecisionBundle.model_validate(state["decision"])
         verdicts, approved = deps.guardrails.evaluate(
@@ -174,6 +185,7 @@ def build_graph(deps: GraphDependencies):
         }
 
     def pre_execution_gate(state: AgentState) -> dict:
+        activity("EXECUTION", "Contrôle final avant envoi des ordres")
         current = deps.repository.current_kill_switch()
         deps.repository.add_event(
             "KILL_SWITCH_READ",
@@ -188,6 +200,7 @@ def build_graph(deps: GraphDependencies):
         return "reconcile"
 
     def execute_node(state: AgentState) -> dict:
+        activity("EXECUTION", "Envoi et confirmation des ordres")
         from agent.domain import ApprovedOrder
 
         results = [
@@ -197,6 +210,7 @@ def build_graph(deps: GraphDependencies):
         return {"executions": [result.model_dump(mode="json") for result in results]}
 
     def reconcile(_: AgentState) -> dict:
+        activity("RECONCILIATION", "Synchronisation des positions et protections")
         reconciled = deps.execution.reconcile()
         return {
             "reconciliations": [item.model_dump(mode="json") for item in reconciled],
@@ -204,6 +218,7 @@ def build_graph(deps: GraphDependencies):
         }
 
     def finalize(state: AgentState) -> dict:
+        activity("FINALIZING", "Finalisation et persistance du cycle")
         status = (
             CycleStatus.SKIPPED.value
             if state.get("kill_switch_state") != KillSwitchState.RUNNING.value
