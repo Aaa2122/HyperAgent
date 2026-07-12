@@ -80,6 +80,9 @@ anomaly in changes_vs_previous.
 
 # OUTPUT
 
+For every FLAT plan, return `entry_zone: null`, `invalidation_px: null`,
+`targets: []`, and `risk_alloc: 0`. Never encode an absent price as numeric zero.
+
 Return exactly ONE JSON object matching the PlaybookLLMOutput schema. No markdown, no
 code fences, no text outside the JSON. A validation failure discards your output and
 forces a fail-closed HOLD for the cycle.

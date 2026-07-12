@@ -441,3 +441,16 @@ if __name__ == "__main__":
     test_sizing()
     test_feature_sheet()
     print(f"\nALL TESTS PASSED ({PASSED} checks)")
+def test_flat_plan_normalizes_zero_invalidation_without_weakening_directional_plans():
+    flat = AssetPlan(
+        symbol="ETH", bias="FLAT", conviction=0.2,
+        thesis="No directional edge is present in the current market regime.",
+        invalidation_px=0, risk_alloc=0,
+    )
+    assert flat.invalidation_px is None
+    with pytest.raises(ValidationError, match="invalidation_px obligatoire"):
+        AssetPlan(
+            symbol="BTC", bias="LONG", conviction=0.7,
+            thesis="Directional setup with deliberately invalid zero stop price.",
+            invalidation_px=0, risk_alloc=0.3,
+        )

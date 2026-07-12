@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent.symbols import ALL_SYMBOLS
 
@@ -50,6 +50,18 @@ class AssetPlan(BaseModel):
         description="Fraction du budget de risque global. La valeur en USD de "
                     "ce budget est inconnue du LLM, par design.",
     )
+
+    @field_validator("invalidation_px", mode="before")
+    @classmethod
+    def _zero_invalidation_means_absent(cls, value: object) -> object:
+        """Tolerate the common structured-output encoding of null as numeric zero.
+
+        Directional plans remain protected: zero becomes None and the coherence
+        validator below still rejects LONG/SHORT without a real invalidation.
+        """
+        if value in (0, 0.0, "0", "0.0"):
+            return None
+        return value
 
     @model_validator(mode="after")
     def _coherence(self) -> "AssetPlan":
