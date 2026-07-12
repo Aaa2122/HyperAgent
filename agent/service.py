@@ -807,6 +807,8 @@ class AgentService:
             protections=context["protections"],
             cycles=context["cycles"],
         )
+        cutoff = self.settings.trade_history_start_at.astimezone(timezone.utc)
+        trades = [item for item in trades if item.opened_at >= cutoff]
         payload = {
             "trades": [item.model_dump(mode="json") for item in trades],
             "total": len(trades),

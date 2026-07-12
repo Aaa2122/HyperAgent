@@ -415,6 +415,7 @@ class _FakeInfoClient:
 
 def test_agent_service_fetches_once_and_metrics_reuse_the_computed_view() -> None:
     service = AgentService(_settings())
+    service.settings.trade_history_start_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
     client = _FakeInfoClient(
         [
             _fill(

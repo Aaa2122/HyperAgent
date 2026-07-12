@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal
 
@@ -66,6 +67,9 @@ class Settings(BaseSettings):
     trader_move_trigger_pct: float = Field(default=0.5, gt=0, le=10)
     capital_constrained_review_seconds: float = Field(default=1800.0, ge=300, le=14_400)
     position_alert_distance_pct: float = Field(default=1.0, gt=0, le=10)
+    trade_history_start_at: datetime = Field(
+        default_factory=lambda: datetime(2026, 7, 11, tzinfo=timezone.utc)
+    )
 
     market_data_provider: Literal["paper", "hyperliquid"] = "paper"
     hyperliquid_network: Literal["mainnet", "testnet"] = "mainnet"
