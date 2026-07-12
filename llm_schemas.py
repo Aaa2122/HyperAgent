@@ -13,12 +13,14 @@ ces schémas n'exprime une taille absolue en USD ou en contrats.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Symbol = Literal["BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI"]
-WHITELIST: tuple[str, ...] = ("BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI")
+from agent.symbols import ALL_SYMBOLS
+
+Symbol = Annotated[str, Field(pattern=r"^(BTC|ETH|SOL|XRP|BNB|HYPE|LINK|SUI|xyz:(TSLA|NVDA|AAPL|MSFT|AMZN|META|GOOGL))$")]
+WHITELIST: tuple[str, ...] = ALL_SYMBOLS
 
 # Sorties LLM : immuables, aucun champ inconnu toléré.
 STRICT = ConfigDict(extra="forbid", frozen=True)

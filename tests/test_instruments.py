@@ -103,7 +103,7 @@ def test_us_equity_session_clock_rejects_ambiguous_naive_datetimes() -> None:
         UsEquitySessionClock().at(datetime(2026, 7, 13, 10, 0))
 
 
-def test_xyz_discovery_builds_a_read_only_paper_registry(
+def test_xyz_discovery_builds_a_live_registry(
     xyz_info_fixture: dict[str, Any],
 ) -> None:
     client = FixtureInfoClient(xyz_info_fixture)
@@ -111,7 +111,7 @@ def test_xyz_discovery_builds_a_read_only_paper_registry(
         as_of=datetime(2026, 7, 13, 14, 0, tzinfo=timezone.utc)
     )
 
-    assert registry.execution_scope is ExecutionScope.READ_ONLY_PAPER
+    assert registry.execution_scope is ExecutionScope.LIVE
     assert registry.venue.status is DexDiscoveryStatus.DISCOVERED
     assert registry.venue.name == "xyz"
     assert registry.venue.full_name == "XYZ"
@@ -128,14 +128,14 @@ def test_xyz_discovery_builds_a_read_only_paper_registry(
     assert tsla.venue_symbol == "xyz:TSLA"
     assert tsla.asset_class is AssetClass.US_EQUITY
     assert tsla.kind is InstrumentKind.HIP3_PERPETUAL
-    assert tsla.execution_scope is ExecutionScope.READ_ONLY_PAPER
+    assert tsla.execution_scope is ExecutionScope.LIVE
     assert tsla.venue_status is VenueMarketStatus.AVAILABLE
     assert tsla.mark_px == 465.13
     assert tsla.paper_eligible is True
-    assert tsla.read_only is True
-    assert tsla.live_eligible is False
+    assert tsla.read_only is False
+    assert tsla.live_eligible is True
 
-    assert all(item.live_eligible is False for item in registry.instruments)
+    assert all(item.live_eligible is True for item in registry.instruments)
     assert all(item.paper_eligible is True for item in registry.instruments)
     assert client.requests == [
         {"type": "perpDexs"},
@@ -146,8 +146,8 @@ def test_xyz_discovery_builds_a_read_only_paper_registry(
 
     # The public contract is directly JSON serializable for a future API/UI reader.
     serialized = registry.to_dict()
-    assert serialized["execution_scope"] == "read_only_paper"
-    assert serialized["instruments"][0]["live_eligible"] is False
+    assert serialized["execution_scope"] == "live"
+    assert serialized["instruments"][0]["live_eligible"] is True
     json.dumps(serialized)
 
 
@@ -276,7 +276,7 @@ def test_service_exposes_and_caches_the_read_only_registry(
     second = service.instrument_registry()
 
     assert first == second
-    assert first["execution_scope"] == "read_only_paper"
+    assert first["execution_scope"] == "live"
     assert len(first["instruments"]) == 7
-    assert all(item["live_eligible"] is False for item in first["instruments"])
+    assert all(item["live_eligible"] is True for item in first["instruments"])
     assert len(client.requests) == 3

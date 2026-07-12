@@ -37,6 +37,7 @@ class ExecutionScope(str, Enum):
     """
 
     READ_ONLY_PAPER = "read_only_paper"
+    LIVE = "live"
 
 
 class DexDiscoveryStatus(str, Enum):
@@ -129,16 +130,17 @@ class Instrument:
     universe_index: int | None = None
     asset_class: AssetClass = field(default=AssetClass.US_EQUITY, init=False)
     kind: InstrumentKind = field(default=InstrumentKind.HIP3_PERPETUAL, init=False)
-    execution_scope: ExecutionScope = field(
-        default=ExecutionScope.READ_ONLY_PAPER, init=False
-    )
-    read_only: bool = field(default=True, init=False)
-    live_eligible: bool = field(default=False, init=False)
+    execution_scope: ExecutionScope = field(default=ExecutionScope.LIVE, init=False)
+    read_only: bool = field(default=False, init=False)
 
     @property
     def paper_eligible(self) -> bool:
         # The reference-equity session is informational. HIP-3 venue availability
         # alone determines whether a deterministic PAPER consumer may use the mark.
+        return self.venue_status is VenueMarketStatus.AVAILABLE
+
+    @property
+    def live_eligible(self) -> bool:
         return self.venue_status is VenueMarketStatus.AVAILABLE
 
     def to_dict(self) -> dict[str, Any]:
@@ -178,9 +180,7 @@ class InstrumentRegistrySnapshot:
     session: UsEquitySession
     instruments: tuple[Instrument, ...]
     warnings: tuple[str, ...] = ()
-    execution_scope: ExecutionScope = field(
-        default=ExecutionScope.READ_ONLY_PAPER, init=False
-    )
+    execution_scope: ExecutionScope = field(default=ExecutionScope.LIVE, init=False)
 
     def get(self, symbol: str) -> Instrument | None:
         normalized = symbol.strip().upper()

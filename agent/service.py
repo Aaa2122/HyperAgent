@@ -31,6 +31,7 @@ from agent.market import PaperMarketData
 from agent.repository import Repository
 from agent.research import GrokXResearchProvider, NeutralResearchProvider
 from agent.strategies import MeanReversionStrategy, MomentumStrategy
+from agent.symbols import ALL_SYMBOLS
 
 
 class AgentService:
@@ -104,14 +105,7 @@ class AgentService:
                     ),
                     "min_order_notional_usd": 10.0,
                     "market_data_max_age_seconds": 60.0,
-                    "max_asset_notional_usd": {
-                        "BTC": experimental_cap,
-                        "ETH": experimental_cap,
-                        "SOL": experimental_cap,
-                        "XRP": experimental_cap, "BNB": experimental_cap,
-                        "HYPE": experimental_cap, "LINK": experimental_cap,
-                        "SUI": experimental_cap,
-                    },
+                    "max_asset_notional_usd": {s: experimental_cap for s in ALL_SYMBOLS},
                 }
             )
         if settings.agent_mode is AgentMode.LIVE:
@@ -127,16 +121,7 @@ class AgentService:
                     "stop_out_cooldown_minutes": 0.0,
                     "max_portfolio_risk_frac": 1.0,
                     "max_net_exposure_frac": 1_000_000.0,
-                    "max_asset_notional_usd": {
-                        "BTC": 1_000_000_000_000.0,
-                        "ETH": 1_000_000_000_000.0,
-                        "SOL": 1_000_000_000_000.0,
-                        "XRP": 1_000_000_000_000.0,
-                        "BNB": 1_000_000_000_000.0,
-                        "HYPE": 1_000_000_000_000.0,
-                        "LINK": 1_000_000_000_000.0,
-                        "SUI": 1_000_000_000_000.0,
-                    },
+                    "max_asset_notional_usd": {s: 1_000_000_000_000.0 for s in ALL_SYMBOLS},
                 }
             )
 
@@ -197,13 +182,7 @@ class AgentService:
                 max_open_orders_per_cycle = 100
                 guardrail_config = guardrail_config.model_copy(
                     update={
-                        "max_asset_notional_usd": {
-                            "BTC": cap,
-                            "ETH": cap,
-                            "SOL": cap,
-                            "XRP": cap, "BNB": cap, "HYPE": cap,
-                            "LINK": cap, "SUI": cap,
-                        }
+                        "max_asset_notional_usd": {s: cap for s in ALL_SYMBOLS}
                     }
                 )
             execution = HyperliquidExecutionService(
@@ -846,12 +825,7 @@ class AgentService:
         return calculate_trade_metrics(history["trades"]).model_dump(mode="json")
 
     def instrument_registry(self, *, fresh: bool = False) -> dict:
-        """Expose HIP-3 US markets as read-only discovery data.
-
-        Discovery never changes the execution universe.  The registry itself
-        hard-codes ``live_eligible=False`` so a visible ticker cannot become an
-        executable LIVE asset by accident.
-        """
+        """Expose the HIP-3 US universe and its current live venue status."""
 
         now_mono = time.monotonic()
         if (

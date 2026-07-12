@@ -15,6 +15,7 @@ from agent.domain import ApprovedOrder, ExecutionResult, KillSwitchState
 from agent.execution import build_intent_identity
 from agent.protection import ProtectionSpec, build_protection_specs
 from agent.repository import Repository
+from agent.symbols import HIP3_DEXS
 
 
 def _secret_value(value: SecretStr | str) -> str:
@@ -173,6 +174,7 @@ class HyperliquidExecutionService:
             self.wallet,
             api_url or default_url,
             account_address=account_address,
+            perp_dexs=["", *HIP3_DEXS],
             timeout=timeout_seconds,
         )
         self.info = info or self.exchange.info
@@ -953,9 +955,17 @@ class HyperliquidExecutionService:
         )
 
     def positions(self) -> list[dict]:
-        state = self.info.user_state(self.account_address)
+        states = [self.info.user_state(self.account_address)]
+        for dex in HIP3_DEXS:
+            try:
+                states.append(self.info.user_state(self.account_address, dex))
+            except TypeError:
+                # Compatibility with injected test/legacy clients.
+                break
         positions: list[dict] = []
-        for wrapper in state.get("assetPositions", []):
+        for wrapper in (
+            wrapper for state in states for wrapper in state.get("assetPositions", [])
+        ):
             position = wrapper.get("position", {})
             size = float(position.get("szi") or 0)
             if size == 0:

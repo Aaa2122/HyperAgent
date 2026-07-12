@@ -10,9 +10,11 @@ from typing import Any
 import httpx
 
 from llm_schemas import FeatureSheet
+from agent.instruments import UsEquitySessionClock, UsEquitySessionStatus
+from agent.symbols import CORE_SYMBOLS, HIP3_US_SYMBOLS
 
 
-SYMBOLS = ("BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI")
+SYMBOLS = CORE_SYMBOLS
 
 
 class HyperliquidInfoClient:
@@ -47,8 +49,11 @@ class HyperliquidInfoClient:
                 time.sleep(0.2 * (2**attempt))
         raise RuntimeError("Hyperliquid Info API unavailable") from last_error
 
-    def meta_and_asset_contexts(self) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-        payload = self.post({"type": "metaAndAssetCtxs"})
+    def meta_and_asset_contexts(self, dex: str = "") -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        request: dict[str, Any] = {"type": "metaAndAssetCtxs"}
+        if dex:
+            request["dex"] = dex
+        payload = self.post(request)
         if not isinstance(payload, list) or len(payload) != 2:
             raise ValueError("invalid metaAndAssetCtxs response")
         return payload[0], payload[1]
@@ -126,14 +131,17 @@ class HyperliquidInfoClient:
             return str(result.get("abstraction") or result.get("type") or "disabled")
         return "disabled"
 
-    def all_mids(self) -> dict[str, float]:
-        result = self.post({"type": "allMids"})
+    def all_mids(self, dex: str = "") -> dict[str, float]:
+        request: dict[str, Any] = {"type": "allMids"}
+        if dex:
+            request["dex"] = dex
+        result = self.post(request)
         if not isinstance(result, dict):
             raise ValueError("invalid allMids response")
         return {
             symbol: float(value)
             for symbol, value in result.items()
-            if symbol in SYMBOLS
+            if symbol in (*CORE_SYMBOLS, *HIP3_US_SYMBOLS)
         }
 
     def portfolio(self, user: str) -> list[Any]:
@@ -175,7 +183,17 @@ class HyperliquidMarketData:
             for index, item in enumerate(universe)
             if index < len(contexts) and item.get("name") in SYMBOLS
         }
-        symbols = tuple(symbol for symbol in SYMBOLS if symbol in context_by_symbol)
+        us_session = UsEquitySessionClock().at(requested_at)
+        if us_session.status is not UsEquitySessionStatus.CLOSED:
+            hip_meta, hip_contexts = self.client.meta_and_asset_contexts("xyz")
+            for index, item in enumerate(hip_meta.get("universe", [])):
+                name = str(item.get("name") or "")
+                if index < len(hip_contexts) and name in HIP3_US_SYMBOLS:
+                    context_by_symbol[name] = {
+                        **hip_contexts[index],
+                        "maxLeverage": item.get("maxLeverage", 20),
+                    }
+        symbols = tuple(symbol for symbol in (*CORE_SYMBOLS, *HIP3_US_SYMBOLS) if symbol in context_by_symbol)
         if len(symbols) < 3:
             raise ValueError(f"Hyperliquid universe only returned {symbols}")
 
@@ -229,7 +247,13 @@ class HyperliquidMarketData:
             })
         ranked.sort(key=lambda item: item["score"], reverse=True)
         selected = {"BTC", "ETH", "SOL"}
-        selected.update(item["symbol"] for item in ranked if item["symbol"] not in selected and len(selected) < 5)
+        # During US extended hours, reserve room for the strongest HIP-3 markets.
+        if us_session.status is not UsEquitySessionStatus.CLOSED:
+            selected.update(
+                item["symbol"] for item in ranked
+                if item["symbol"] in HIP3_US_SYMBOLS and len(selected) < 6
+            )
+        selected.update(item["symbol"] for item in ranked if item["symbol"] not in selected and len(selected) < 8)
         self.last_universe_scan = [
             {**item, "selected": item["symbol"] in selected,
              "reason": "CORE" if item["symbol"] in {"BTC", "ETH", "SOL"} else "TOP_SCORE" if item["symbol"] in selected else "BELOW_CUTOFF"}
@@ -249,7 +273,9 @@ class HyperliquidMarketData:
         )
 
     def marks(self) -> dict[str, float]:
-        return self.client.all_mids()
+        marks = self.client.all_mids()
+        marks.update(self.client.all_mids("xyz"))
+        return marks
 
     def activation_metrics(self) -> dict[str, Any]:
         """Return a lightweight, read-only liquidity observation.

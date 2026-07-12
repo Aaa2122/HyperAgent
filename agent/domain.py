@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import (
     AliasChoices,
@@ -22,7 +22,7 @@ from agent.activation import (
     validate_timezone_name,
 )
 
-Symbol = Literal["BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI"]
+Symbol = Annotated[str, Field(pattern=r"^(BTC|ETH|SOL|XRP|BNB|HYPE|LINK|SUI|xyz:(TSLA|NVDA|AAPL|MSFT|AMZN|META|GOOGL))$")]
 
 
 class KillSwitchState(str, Enum):
