@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from llm_schemas import ConsequenceReport, FinalRiskReview, PlaybookRecord, TraderOutput
 
@@ -21,6 +21,7 @@ class CycleStatus(str, Enum):
     RUNNING = "RUNNING"
     SKIPPED = "SKIPPED"
     FAILED = "FAILED"
+    DEGRADED = "DEGRADED"
     COMPLETED = "COMPLETED"
 
 
@@ -45,7 +46,16 @@ class ResearchSignal(BaseModel):
     manipulation_risk: float = Field(default=0.0, ge=0.0, le=1.0)
     horizon_minutes: int = Field(default=60, ge=5, le=1440)
     summary: str = "No verified event signal."
-    sources: list[str] = Field(default_factory=list, max_length=8)
+    source_urls: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        validation_alias=AliasChoices("source_urls", "sources"),
+    )
+
+    @property
+    def sources(self) -> list[str]:
+        """Read-only compatibility for code handling pre-v2 cached payloads."""
+        return self.source_urls
 
 
 class ResearchBundle(BaseModel):
@@ -79,12 +89,41 @@ class PromptPosition(BaseModel):
     distance_to_invalidation_atr: float = Field(ge=0)
 
 
+class StructuredReason(BaseModel):
+    """Stable, UI-friendly explanation backed by machine-readable evidence."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str = Field(min_length=3, max_length=80, pattern=r"^[A-Z0-9_]+$")
+    message: str = Field(min_length=5, max_length=300)
+    impact: Literal["SUPPORTS", "REDUCES", "BLOCKS", "NEUTRAL"]
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConvictionDiagnostic(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    symbol: Symbol
+    conviction: float = Field(ge=0.0, le=1.0)
+    level: Literal["LOW", "MODERATE", "HIGH"]
+    actionable: bool
+    reasons: list[StructuredReason] = Field(default_factory=list, max_length=8)
+
+
 class DecisionBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     playbook: PlaybookRecord
     trader: TraderOutput
     provider: str
+    provenance: Literal["GROK", "CACHE", "RULE_FALLBACK", "SAFE_HOLD"] = (
+        "RULE_FALLBACK"
+    )
+    status: Literal["NOMINAL", "DEGRADED"] = "NOMINAL"
+    reasons: list[StructuredReason] = Field(default_factory=list, max_length=8)
+    conviction_diagnostics: list[ConvictionDiagnostic] = Field(
+        default_factory=list, max_length=8
+    )
     initial_trader: TraderOutput | None = None
     consequence_report: ConsequenceReport | None = None
     risk_review: FinalRiskReview | None = None

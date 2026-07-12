@@ -15,6 +15,7 @@ from agent.domain import (
     KillSwitchState,
     ResearchBundle,
     StrategySignal,
+    StructuredReason,
 )
 from agent.execution import ExecutionService
 from agent.guardrails import GuardrailEngine
@@ -33,8 +34,12 @@ class AgentState(TypedDict, total=False):
     market_quality_warnings: list[str]
     market_snapshot: dict
     research: dict
+    research_status: str
     strategy_signals: list[dict]
     decision: dict
+    decision_provenance: str
+    decision_status: str
+    health_status: str
     guardrail_verdicts: list[dict]
     approved_orders: list[dict]
     executions: list[dict]
@@ -94,7 +99,10 @@ def build_graph(deps: GraphDependencies):
                 cycle_id=state["cycle_id"],
                 allow_refresh=state.get("allow_external_research", True),
             )
-            return {"research": bundle.model_dump(mode="json")}
+            return {
+                "research": bundle.model_dump(mode="json"),
+                "research_status": "NOMINAL",
+            }
         except Exception as exc:
             deps.repository.add_event(
                 "RESEARCH_FAILED",
@@ -105,6 +113,7 @@ def build_graph(deps: GraphDependencies):
             neutral = NeutralResearchProvider().research(feature_sheet)
             return {
                 "research": neutral.model_dump(mode="json"),
+                "research_status": "DEGRADED",
                 "incidents": [{"type": "RESEARCH_FAILED", "safe_fallback": "FLAT"}],
             }
 
@@ -154,14 +163,49 @@ def build_graph(deps: GraphDependencies):
                     ]
                 }
             )
-            bundle = baseline.model_copy(update={"trader": held, "provider": "safe-hold"})
+            reason = StructuredReason(
+                code="DECISION_PROVIDER_FAILED",
+                message="Decision generation failed; every asset was forced to HOLD.",
+                impact="BLOCKS",
+                evidence={
+                    "error_type": type(exc).__name__,
+                    "error_detail": str(exc)[:500],
+                },
+            )
+            bundle = baseline.model_copy(update={
+                "trader": held,
+                "provider": "safe-hold",
+                "provenance": "SAFE_HOLD",
+                "status": "DEGRADED",
+                "reasons": [*baseline.reasons, reason][:8],
+            })
             deps.repository.add_event(
                 "DECISION_FAILED",
-                {"error": type(exc).__name__, "detail": str(exc)[:1000], "fallback": "HOLD"},
+                {
+                    "error": type(exc).__name__,
+                    "detail": str(exc)[:1000],
+                    "fallback": "HOLD",
+                    "provenance": "SAFE_HOLD",
+                    "status": "DEGRADED",
+                },
                 cycle_id=state["cycle_id"],
                 severity="ERROR",
             )
-        return {"decision": bundle.model_dump(mode="json")}
+        result = {
+            "decision": bundle.model_dump(mode="json"),
+            "decision_provenance": bundle.provenance,
+            "decision_status": bundle.status,
+        }
+        if bundle.status == "DEGRADED":
+            result["incidents"] = [
+                *state.get("incidents", []),
+                {
+                    "type": "DECISION_DEGRADED",
+                    "provenance": bundle.provenance,
+                    "reason_codes": [item.code for item in bundle.reasons],
+                },
+            ]
+        return result
 
     def guardrails_node(state: AgentState) -> dict:
         activity("VALIDATION", "Simulation des conséquences opérationnelles")
@@ -219,12 +263,23 @@ def build_graph(deps: GraphDependencies):
 
     def finalize(state: AgentState) -> dict:
         activity("FINALIZING", "Finalisation et persistance du cycle")
-        status = (
-            CycleStatus.SKIPPED.value
-            if state.get("kill_switch_state") != KillSwitchState.RUNNING.value
-            else CycleStatus.COMPLETED.value
-        )
-        return {"status": status, "positions": deps.execution.positions()}
+        if state.get("kill_switch_state") != KillSwitchState.RUNNING.value:
+            status = CycleStatus.SKIPPED.value
+        elif (
+            state.get("research_status") == "DEGRADED"
+            or state.get("decision_status") == "DEGRADED"
+            or bool(state.get("incidents"))
+        ):
+            status = CycleStatus.DEGRADED.value
+        else:
+            status = CycleStatus.COMPLETED.value
+        return {
+            "status": status,
+            "health_status": (
+                "DEGRADED" if status == CycleStatus.DEGRADED.value else "NOMINAL"
+            ),
+            "positions": deps.execution.positions(),
+        }
 
     builder = StateGraph(AgentState)
     builder.add_node("check_killswitch", check_killswitch)

@@ -20,14 +20,16 @@ from llm_schemas import (
 )
 
 from agent.domain import (
+    ConvictionDiagnostic,
     DecisionBundle,
     PromptPosition,
     ResearchBundle,
     ResearchSignal,
     StrategySignal,
+    StructuredReason,
 )
 from agent.consequence import simulate_consequences
-from agent.llm_observability import llm_record
+from agent.llm_observability import llm_failure_record, llm_record
 
 
 class DecisionProvider(Protocol):
@@ -48,6 +50,142 @@ class DecisionProvider(Protocol):
 def _feature_hash(feature_sheet: FeatureSheet) -> str:
     payload = json.dumps(feature_sheet.model_dump(mode="json"), sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def build_conviction_diagnostics(
+    playbook: PlaybookRecord,
+    signals: list[StrategySignal],
+    research: ResearchBundle,
+    min_plan_conviction: float,
+) -> list[ConvictionDiagnostic]:
+    """Explain conviction without changing any decision or guardrail threshold."""
+    research_by_symbol = {item.symbol: item for item in research.signals}
+    diagnostics: list[ConvictionDiagnostic] = []
+    for plan in playbook.payload.plans:
+        reasons: list[StructuredReason] = []
+        if plan.bias == "FLAT":
+            reasons.append(StructuredReason(
+                code="PLAN_IS_FLAT",
+                message="The strategist found no directional plan for this asset.",
+                impact="BLOCKS",
+                evidence={"bias": plan.bias},
+            ))
+        if plan.conviction < min_plan_conviction:
+            reasons.append(StructuredReason(
+                code="BELOW_PLAN_CONVICTION_THRESHOLD",
+                message="Plan conviction is below the configured action threshold.",
+                impact="BLOCKS",
+                evidence={
+                    "conviction": plan.conviction,
+                    "threshold": min_plan_conviction,
+                },
+            ))
+
+        technical = [item for item in signals if item.symbol == plan.symbol]
+        directional = [item for item in technical if item.direction != "FLAT"]
+        directions = sorted({item.direction for item in directional})
+        if not directional:
+            reasons.append(StructuredReason(
+                code="NO_DIRECTIONAL_TECHNICAL_EDGE",
+                message="Technical advisors provide no directional confirmation.",
+                impact="REDUCES",
+                evidence={
+                    "advisor_count": len(technical),
+                    "scores": [round(item.score, 4) for item in technical],
+                },
+            ))
+        elif len(directions) > 1:
+            reasons.append(StructuredReason(
+                code="CONFLICTING_TECHNICAL_SIGNALS",
+                message="Technical advisors disagree on direction.",
+                impact="REDUCES",
+                evidence={"directions": directions},
+            ))
+        elif plan.bias != "FLAT" and directions[0] == plan.bias:
+            reasons.append(StructuredReason(
+                code="TECHNICAL_ALIGNMENT",
+                message="Directional technical signals support the plan bias.",
+                impact="SUPPORTS",
+                evidence={"direction": directions[0]},
+            ))
+        elif plan.bias != "FLAT":
+            reasons.append(StructuredReason(
+                code="TECHNICAL_PLAN_MISMATCH",
+                message="Technical direction does not support the plan bias.",
+                impact="REDUCES",
+                evidence={"technical_direction": directions[0], "plan_bias": plan.bias},
+            ))
+
+        event = research_by_symbol.get(plan.symbol)
+        if event is None or not event.source_urls:
+            reasons.append(StructuredReason(
+                code="NO_VERIFIED_CATALYST",
+                message="No cited external source confirms a market catalyst.",
+                impact="REDUCES",
+                evidence={
+                    "research_confidence": event.confidence if event else 0.0,
+                    "source_count": len(event.source_urls) if event else 0,
+                },
+            ))
+        elif event.direction == "FLAT" or event.confidence == 0:
+            reasons.append(StructuredReason(
+                code="RESEARCH_SIGNAL_NEUTRAL",
+                message="Verified research does not provide a directional event edge.",
+                impact="REDUCES",
+                evidence={
+                    "direction": event.direction,
+                    "confidence": event.confidence,
+                    "source_count": len(event.source_urls),
+                },
+            ))
+        elif plan.bias != "FLAT" and event.direction != plan.bias:
+            reasons.append(StructuredReason(
+                code="RESEARCH_PLAN_CONFLICT",
+                message="External research points against the plan bias.",
+                impact="REDUCES",
+                evidence={
+                    "research_direction": event.direction,
+                    "plan_bias": plan.bias,
+                    "confidence": event.confidence,
+                },
+            ))
+        elif plan.bias != "FLAT":
+            reasons.append(StructuredReason(
+                code="RESEARCH_ALIGNMENT",
+                message="External research supports the plan bias.",
+                impact="SUPPORTS",
+                evidence={
+                    "direction": event.direction,
+                    "confidence": event.confidence,
+                    "source_count": len(event.source_urls),
+                },
+            ))
+        if event is not None and event.manipulation_risk > event.confidence:
+            reasons.append(StructuredReason(
+                code="MANIPULATION_RISK_DOMINATES",
+                message="Manipulation risk exceeds research confidence.",
+                impact="REDUCES",
+                evidence={
+                    "manipulation_risk": event.manipulation_risk,
+                    "research_confidence": event.confidence,
+                },
+            ))
+
+        level = (
+            "LOW" if plan.conviction < 0.5
+            else "HIGH" if plan.conviction >= 0.8
+            else "MODERATE"
+        )
+        diagnostics.append(ConvictionDiagnostic(
+            symbol=plan.symbol,
+            conviction=plan.conviction,
+            level=level,
+            actionable=(
+                plan.bias != "FLAT" and plan.conviction >= min_plan_conviction
+            ),
+            reasons=reasons[:8],
+        ))
+    return diagnostics
 
 
 class RuleBasedDecisionProvider:
@@ -177,6 +315,20 @@ class RuleBasedDecisionProvider:
             playbook=playbook,
             trader=TraderOutput(decisions=decisions),
             provider=self.name,
+            provenance="RULE_FALLBACK",
+            status="NOMINAL",
+            reasons=[StructuredReason(
+                code="DETERMINISTIC_RULE_PROVIDER",
+                message="The configured deterministic rule provider produced this decision.",
+                impact="NEUTRAL",
+                evidence={"provider": self.name},
+            )],
+            conviction_diagnostics=build_conviction_diagnostics(
+                playbook,
+                signals,
+                research,
+                LLMLayerConfig().min_plan_conviction,
+            ),
         )
 
 
@@ -287,17 +439,62 @@ class GrokDecisionProvider:
         now = datetime.now(timezone.utc)
         cached = self._playbook_cache
         cache_age = (now - cached.created_at).total_seconds() if cached else None
+        provenance = "GROK"
+        decision_status = "NOMINAL"
+        decision_reasons: list[StructuredReason] = []
+        current_symbols = {asset.symbol for asset in feature_sheet.assets}
         if (
             cached is not None
-            and {plan.symbol for plan in cached.payload.plans} == {asset.symbol for asset in feature_sheet.assets}
+            and {plan.symbol for plan in cached.payload.plans} == current_symbols
             and cache_age is not None
             and cache_age < self.strategist_refresh_seconds
             and not cached.is_expired(now)
         ):
             playbook = cached
+            provenance = "CACHE"
+            decision_reasons.append(StructuredReason(
+                code="STRATEGIST_CACHE_HIT",
+                message="The current-universe strategist playbook was reused from cache.",
+                impact="NEUTRAL",
+                evidence={"cache_age_seconds": round(cache_age, 3)},
+            ))
             self._record_skip(cycle_id, "strategist", "CACHE_HIT")
         elif not allow_strategist_refresh and cached is not None:
-            playbook = cached
+            provenance = "CACHE"
+            cached_by_symbol = {item.symbol: item for item in cached.payload.plans}
+            missing_symbols = sorted(current_symbols - set(cached_by_symbol))
+            aligned_payload = cached.payload.model_copy(update={"plans": [
+                cached_by_symbol.get(asset.symbol, AssetPlan(
+                    symbol=asset.symbol,
+                    bias="FLAT",
+                    conviction=0.0,
+                    thesis=(
+                        "No cached strategist plan exists for this selected market; "
+                        "remain flat until refresh is allowed."
+                    ),
+                    risk_alloc=0.0,
+                ))
+                for asset in feature_sheet.assets
+            ]})
+            playbook = cached.model_copy(update={
+                "payload": aligned_payload,
+                "feature_sheet_hash": _feature_hash(feature_sheet),
+            })
+            if missing_symbols:
+                decision_status = "DEGRADED"
+                decision_reasons.append(StructuredReason(
+                    code="CACHE_UNIVERSE_REALIGNED",
+                    message="Cached strategist coverage differed from the current universe.",
+                    impact="BLOCKS",
+                    evidence={"missing_symbols": missing_symbols},
+                ))
+            else:
+                decision_reasons.append(StructuredReason(
+                    code="STRATEGIST_REFRESH_DISABLED",
+                    message="The current strategist playbook was reused while refresh was disabled.",
+                    impact="NEUTRAL",
+                    evidence={"cache_age_seconds": round(cache_age or 0.0, 3)},
+                ))
             self._record_skip(cycle_id, "strategist", "CAPITAL_CONSTRAINED")
         else:
             strategist_input = {
@@ -321,21 +518,39 @@ class GrokDecisionProvider:
             }
             strategist_prompt = self._strategist_system_prompt()
             started = time.monotonic()
-            strategist_response = self.client.beta.chat.completions.parse(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": strategist_prompt,
-                    },
-                    {"role": "user", "content": json.dumps(strategist_input)},
-                ],
-                response_format=PlaybookLLMOutput,
-            )
-            strategist = strategist_response.choices[0].message.parsed
-            if strategist is None:
-                raise RuntimeError("Grok strategist returned no structured output")
+            strategist_response = None
+            try:
+                strategist_response = self.client.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": strategist_prompt,
+                        },
+                        {"role": "user", "content": json.dumps(strategist_input)},
+                    ],
+                    response_format=PlaybookLLMOutput,
+                )
+                strategist = strategist_response.choices[0].message.parsed
+                if strategist is None:
+                    raise RuntimeError(
+                        "Grok strategist returned no structured output"
+                    )
+            except Exception as exc:
+                if self.recorder:
+                    self.recorder(llm_failure_record(
+                        strategist_response,
+                        cycle_id=cycle_id,
+                        stage="strategist",
+                        model=self.model,
+                        latency_ms=int((time.monotonic() - started) * 1000),
+                        prompt={"system": strategist_prompt, "input": strategist_input},
+                        error=exc,
+                        reason_code="STRUCTURED_OUTPUT_PARSE_FAILED",
+                    ))
+                raise
             plans_by_symbol = {item.symbol: item for item in strategist.plans}
+            missing_symbols = sorted(current_symbols - set(plans_by_symbol))
             strategist = strategist.model_copy(update={"plans": [
                 plans_by_symbol.get(asset.symbol, AssetPlan(
                     symbol=asset.symbol, bias="FLAT", conviction=0.0,
@@ -344,6 +559,14 @@ class GrokDecisionProvider:
                 ))
                 for asset in feature_sheet.assets
             ]})
+            if missing_symbols:
+                decision_status = "DEGRADED"
+                decision_reasons.append(StructuredReason(
+                    code="INCOMPLETE_STRATEGIST_COVERAGE",
+                    message="Missing strategist plans were replaced by fail-closed FLAT plans.",
+                    impact="BLOCKS",
+                    evidence={"missing_symbols": missing_symbols},
+                ))
             if self.recorder:
                 self.recorder(llm_record(
                     strategist_response, cycle_id=cycle_id, stage="strategist",
@@ -473,6 +696,15 @@ class GrokDecisionProvider:
             consequence_report=consequences,
             risk_review=review,
             provider=self.model,
+            provenance=provenance,
+            status=decision_status,
+            reasons=decision_reasons,
+            conviction_diagnostics=build_conviction_diagnostics(
+                playbook,
+                signals,
+                research,
+                self.config.min_plan_conviction,
+            ),
         )
 
     def _record_skip(self, cycle_id: str | None, stage: str, reason: str) -> None:

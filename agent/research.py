@@ -57,19 +57,37 @@ class GrokXResearchProvider:
     def seed_cache(self, payload: dict | None) -> None:
         if payload:
             candidate = ResearchBundle.model_validate(payload)
-            if len(candidate.signals) == 8:
-                self._cache = (time.monotonic(), candidate)
+            self._cache = (time.monotonic(), candidate)
+
+    @staticmethod
+    def _align_to_universe(
+        bundle: ResearchBundle, feature_sheet: FeatureSheet
+    ) -> ResearchBundle:
+        """Keep cache output ordered and exactly scoped to the current universe."""
+        by_symbol = {item.symbol: item for item in bundle.signals}
+        return bundle.model_copy(update={"signals": [
+            by_symbol.get(asset.symbol, ResearchSignal(
+                symbol=asset.symbol,
+                summary=(
+                    "No cached research exists for this current-universe asset; "
+                    "event conviction remains neutral."
+                ),
+            ))
+            for asset in feature_sheet.assets
+        ]})
 
     def research(self, feature_sheet: FeatureSheet, cycle_id: str | None = None,
                  allow_refresh: bool = True) -> ResearchBundle:
         now = time.monotonic()
         if self._cache and now - self._cache[0] < self.cache_seconds:
+            aligned = self._align_to_universe(self._cache[1], feature_sheet)
             self._record_skip(cycle_id, "CACHE_HIT")
-            return self._cache[1]
+            return aligned
         if not allow_refresh:
             self._record_skip(cycle_id, "EXTERNAL_RESEARCH_DISABLED")
             if self._cache:
-                return self._cache[1]
+                aligned = self._align_to_universe(self._cache[1], feature_sheet)
+                return aligned
             return NeutralResearchProvider().research(feature_sheet)
         tools: list[dict] = [{"type": "x_search"}, {"type": "web_search"}]
         if self.allowed_handles:
@@ -105,11 +123,7 @@ class GrokXResearchProvider:
         bundle = response.output_parsed
         if bundle is None:
             raise RuntimeError("Grok X research returned no structured payload")
-        by_symbol = {item.symbol: item for item in bundle.signals}
-        bundle = bundle.model_copy(update={"signals": [
-            by_symbol.get(asset.symbol, ResearchSignal(symbol=asset.symbol))
-            for asset in feature_sheet.assets
-        ]})
+        bundle = self._align_to_universe(bundle, feature_sheet)
         if self.recorder:
             self.recorder(llm_record(
                 response, cycle_id=cycle_id, stage="research", model=self.model,

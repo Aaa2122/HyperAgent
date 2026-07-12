@@ -73,3 +73,40 @@ def llm_record(
         "response": _json(result),
         **usage_payload(response),
     }
+
+
+def llm_failure_record(
+    response: Any | None,
+    *,
+    cycle_id: str | None,
+    stage: str,
+    model: str,
+    latency_ms: int,
+    prompt: Any,
+    error: Exception,
+    reason_code: str,
+) -> dict[str, Any]:
+    """Record failed request/parse attempts with any usage returned by xAI.
+
+    `skipped_reason` is retained as the compact indexed reason field used by the
+    existing dashboard. The structured error remains in `response` so a failed
+    strategist call is inspectable instead of disappearing before `llm_record`.
+    """
+    return {
+        "cycle_id": cycle_id,
+        "stage": stage,
+        "provider": "xai",
+        "model": model,
+        "status": "FAILED",
+        "latency_ms": latency_ms,
+        "prompt": _json(prompt),
+        "response": {
+            "error": {
+                "code": reason_code,
+                "type": type(error).__name__,
+                "message": str(error)[:1000],
+            }
+        },
+        "skipped_reason": reason_code,
+        **usage_payload(response),
+    }
