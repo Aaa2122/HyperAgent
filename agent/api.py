@@ -75,7 +75,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/automation")
     def set_automation(command: AutomationCommand) -> dict:
-        return scheduler.configure(**command.model_dump())
+        try:
+            return scheduler.configure(**command.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/automation/status")
     def automation_status() -> dict:

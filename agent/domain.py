@@ -4,9 +4,23 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from llm_schemas import ConsequenceReport, FinalRiskReview, PlaybookRecord, TraderOutput
+
+from agent.activation import (
+    ActivationMode,
+    CryptoSession,
+    UsEquitySession,
+    validate_timezone_name,
+)
 
 Symbol = Literal["BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI"]
 
@@ -178,3 +192,23 @@ class AutomationCommand(BaseModel):
     enabled: bool | None = None
     cycle_interval_seconds: float | None = Field(default=None, ge=60, le=3600)
     risk_monitor_interval_seconds: float | None = Field(default=None, ge=5, le=60)
+    activation_mode: ActivationMode | None = None
+    activation_timezone: str | None = None
+    us_equities_sessions: list[UsEquitySession] | None = None
+    crypto_sessions: list[CryptoSession] | None = None
+    liquidity_filter_enabled: bool | None = None
+    liquidity_min_24h_volume_usd: float | None = Field(default=None, ge=0)
+    liquidity_min_open_interest_usd: float | None = Field(default=None, ge=0)
+    liquidity_min_eligible_assets: int | None = Field(default=None, ge=1, le=8)
+
+    @field_validator("activation_timezone")
+    @classmethod
+    def _valid_activation_timezone(cls, value: str | None) -> str | None:
+        return validate_timezone_name(value) if value is not None else None
+
+    @field_validator("us_equities_sessions", "crypto_sessions")
+    @classmethod
+    def _unique_sessions(cls, value: list[Any] | None) -> list[Any] | None:
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("activation sessions cannot contain duplicates")
+        return value

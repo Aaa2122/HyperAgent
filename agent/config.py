@@ -3,8 +3,16 @@ from __future__ import annotations
 from enum import Enum
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from agent.activation import (
+    ActivationConfig,
+    ActivationMode,
+    CryptoSession,
+    UsEquitySession,
+    validate_timezone_name,
+)
 
 
 class AgentMode(str, Enum):
@@ -31,6 +39,26 @@ class Settings(BaseSettings):
     automation_enabled: bool = False
     cycle_interval_seconds: float = Field(default=300.0, ge=60, le=3600)
     risk_monitor_interval_seconds: float = Field(default=10.0, ge=5, le=60)
+    activation_mode: ActivationMode = ActivationMode.ALWAYS
+    activation_timezone: str = "UTC"
+    us_equities_sessions: list[UsEquitySession] = Field(
+        default_factory=lambda: [
+            UsEquitySession.MARKET_OPEN,
+            UsEquitySession.FIRST_HOURS,
+            UsEquitySession.BEFORE_CLOSE,
+        ]
+    )
+    crypto_sessions: list[CryptoSession] = Field(
+        default_factory=lambda: [
+            CryptoSession.ASIA,
+            CryptoSession.EUROPE,
+            CryptoSession.US,
+        ]
+    )
+    liquidity_filter_enabled: bool = False
+    liquidity_min_24h_volume_usd: float = Field(default=25_000_000.0, ge=0)
+    liquidity_min_open_interest_usd: float = Field(default=10_000_000.0, ge=0)
+    liquidity_min_eligible_assets: int = Field(default=1, ge=1, le=8)
     x_research_cache_seconds: float = Field(default=900.0, ge=60, le=3600)
     strategist_refresh_seconds: float = Field(default=1800.0, ge=300, le=14_400)
     min_llm_collateral_usd: float = Field(default=10.0, ge=0)
@@ -72,8 +100,27 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:5173,http://localhost:4173"
 
+    @field_validator("activation_timezone")
+    @classmethod
+    def _valid_activation_timezone(cls, value: str) -> str:
+        return validate_timezone_name(value)
+
     @model_validator(mode="after")
     def _safety_interlocks(self) -> "Settings":
+        # Reuse the runtime model so environment and dashboard configuration
+        # obey exactly the same session/filter invariants.
+        ActivationConfig(
+            mode=self.activation_mode,
+            timezone=self.activation_timezone,
+            us_equities_sessions=self.us_equities_sessions,
+            crypto_sessions=self.crypto_sessions,
+            liquidity_filter_enabled=self.liquidity_filter_enabled,
+            liquidity_min_24h_volume_usd=self.liquidity_min_24h_volume_usd,
+            liquidity_min_open_interest_usd=(
+                self.liquidity_min_open_interest_usd
+            ),
+            liquidity_min_eligible_assets=self.liquidity_min_eligible_assets,
+        )
         provider = self.llm_provider.strip().lower()
         if provider not in {"rules", "grok"}:
             raise ValueError("LLM_PROVIDER must be 'rules' or 'grok'")

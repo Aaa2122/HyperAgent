@@ -15,6 +15,8 @@ class MarketDataProvider(Protocol):
 
     def marks(self) -> dict[str, float]: ...
 
+    def activation_metrics(self) -> dict: ...
+
 
 class PaperMarketData:
     """Deterministic market stream for PAPER and CI; never submits venue requests."""
@@ -56,6 +58,31 @@ class PaperMarketData:
 
     def marks(self) -> dict[str, float]:
         return dict(self._last_marks)
+
+    def activation_metrics(self) -> dict:
+        """Synthetic but deterministic liquidity evidence for PAPER/CI."""
+
+        return {
+            "as_of": datetime.now(timezone.utc),
+            "source": "paper_deterministic",
+            "assets": [
+                {
+                    "symbol": "BTC",
+                    "volume_24h_usd": 1_500_000_000.0,
+                    "open_interest_usd": 2_400_000_000.0,
+                },
+                {
+                    "symbol": "ETH",
+                    "volume_24h_usd": 900_000_000.0,
+                    "open_interest_usd": 1_200_000_000.0,
+                },
+                {
+                    "symbol": "SOL",
+                    "volume_24h_usd": 450_000_000.0,
+                    "open_interest_usd": 450_000_000.0,
+                },
+            ],
+        }
 
     @staticmethod
     def _asset(

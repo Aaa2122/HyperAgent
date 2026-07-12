@@ -251,6 +251,43 @@ class HyperliquidMarketData:
     def marks(self) -> dict[str, float]:
         return self.client.all_mids()
 
+    def activation_metrics(self) -> dict[str, Any]:
+        """Return a lightweight, read-only liquidity observation.
+
+        ``metaAndAssetCtxs`` is an unsigned Info endpoint. This intentionally
+        avoids candles, order books, exchange routes and every LLM path.
+        """
+
+        meta, contexts = self.client.meta_and_asset_contexts()
+        universe = meta.get("universe", [])
+        assets: list[dict[str, Any]] = []
+        for index, item in enumerate(universe):
+            symbol = str(item.get("name") or "")
+            if symbol not in SYMBOLS or index >= len(contexts):
+                continue
+            context = contexts[index]
+            raw_volume = context.get("dayNtlVlm")
+            raw_oi = context.get("openInterest")
+            raw_mark = context.get("markPx")
+            volume = float(raw_volume) if raw_volume not in {None, ""} else None
+            open_interest = (
+                float(raw_oi) * float(raw_mark)
+                if raw_oi not in {None, ""} and raw_mark not in {None, ""}
+                else None
+            )
+            assets.append(
+                {
+                    "symbol": symbol,
+                    "volume_24h_usd": volume,
+                    "open_interest_usd": open_interest,
+                }
+            )
+        return {
+            "as_of": datetime.now(timezone.utc),
+            "source": f"hyperliquid_{self.network}_metaAndAssetCtxs",
+            "assets": assets,
+        }
+
     def account_snapshot(self) -> dict[str, Any] | None:
         if not self.account_address:
             return None

@@ -7,6 +7,12 @@ from datetime import datetime, timezone
 
 from llm_checks import LLMLayerConfig
 
+from agent.activation import (
+    ActivationConfig,
+    LiquidityObservation,
+    evaluate_activation,
+    evaluate_session_window,
+)
 from agent.config import AgentMode, Settings
 from agent.db import build_engine, build_session_factory
 from agent.decision import GrokDecisionProvider, RuleBasedDecisionProvider
@@ -47,6 +53,9 @@ class AgentService:
         self._trade_history_client: HyperliquidInfoClient | None = None
         self._instrument_registry_cache: tuple[float, dict] | None = None
         self._instrument_registry_client: HyperliquidInfoClient | None = None
+        self._activation_observation_cache: (
+            tuple[float, LiquidityObservation] | None
+        ) = None
         self._last_llm_cycle_at = 0.0
         self._last_llm_marks: dict[str, float] = {}
         self._material_event_pending = False
@@ -350,34 +359,170 @@ class AgentService:
         return {"run": run, "event_reason": reason, "max_move_pct": max_move,
                 "max_interval_seconds": self.settings.trader_max_interval_seconds}
 
-    def scheduled_cycle_policy(self) -> dict:
+    def activation_config(self) -> ActivationConfig:
+        return ActivationConfig(
+            mode=self.settings.activation_mode,
+            timezone=self.settings.activation_timezone,
+            us_equities_sessions=self.settings.us_equities_sessions,
+            crypto_sessions=self.settings.crypto_sessions,
+            liquidity_filter_enabled=self.settings.liquidity_filter_enabled,
+            liquidity_min_24h_volume_usd=(
+                self.settings.liquidity_min_24h_volume_usd
+            ),
+            liquidity_min_open_interest_usd=(
+                self.settings.liquidity_min_open_interest_usd
+            ),
+            liquidity_min_eligible_assets=(
+                self.settings.liquidity_min_eligible_assets
+            ),
+        )
+
+    def _activation_observation(self) -> LiquidityObservation:
+        now_mono = time.monotonic()
+        if (
+            self._activation_observation_cache
+            and now_mono - self._activation_observation_cache[0] < 30
+        ):
+            return self._activation_observation_cache[1]
+        getter = getattr(self.market, "activation_metrics", None)
+        if not callable(getter):
+            raise RuntimeError("market provider has no activation metrics")
+        # This is a deterministic, read-only market-data probe. It does not
+        # traverse the graph, call a model, or submit an exchange command.
+        observation = LiquidityObservation.model_validate(getter())
+        self._activation_observation_cache = (now_mono, observation)
+        return observation
+
+    @staticmethod
+    def _activation_policy_fields(decision) -> dict:
+        activation = decision.model_dump(mode="json")
+        return {
+            "state": decision.state,
+            "next_window_at": activation["next_window_at"],
+            "next_window_local": activation["next_window_local"],
+            "activation": activation,
+            "risk_monitor_continues": True,
+        }
+
+    def scheduled_cycle_policy(self, *, at: datetime | None = None) -> dict:
+        evaluated_at = at or datetime.now(timezone.utc)
+        config = self.activation_config()
+        session = evaluate_session_window(config, at=evaluated_at)
+        common = self._activation_policy_fields(session)
         kill_switch = self.repository.current_kill_switch()
         if kill_switch is not KillSwitchState.RUNNING:
             return {
                 "run": False,
                 "external_research": False,
                 "strategist_refresh": False,
+                **common,
+                "state": "BLOCKED",
                 "reason": f"KILL_SWITCH_{kill_switch.value}",
-                "risk_monitor_continues": True,
+                "detail": (
+                    f"The operator kill switch is {kill_switch.value}; LLM cycles "
+                    "are blocked while deterministic risk monitoring continues."
+                ),
+            }
+        if session.state != "ACTIVE":
+            return {
+                "run": False,
+                "external_research": False,
+                "strategist_refresh": False,
+                **common,
+                "reason": session.reason,
+                "detail": session.detail,
+            }
+
+        activation = evaluate_activation(config, at=evaluated_at)
+        if activation.reason == "LIQUIDITY_OBSERVATION_PENDING":
+            try:
+                observation = self._activation_observation()
+            except (RuntimeError, ValueError, TypeError) as exc:
+                observation = LiquidityObservation(
+                    as_of=evaluated_at,
+                    source=f"unavailable:{type(exc).__name__}",
+                    assets=[],
+                )
+            activation = evaluate_activation(
+                config,
+                at=evaluated_at,
+                observation=observation,
+            )
+        common = self._activation_policy_fields(activation)
+        if activation.state != "ACTIVE":
+            return {
+                "run": False,
+                "external_research": False,
+                "strategist_refresh": False,
+                **common,
+                "reason": activation.reason,
+                "detail": activation.detail,
             }
         if self.settings.agent_mode not in {AgentMode.TESTNET, AgentMode.LIVE}:
-            return {"run": True, "external_research": True,
-                    "strategist_refresh": True, "reason": "NON_LIVE_MODE"}
+            return {
+                "run": True,
+                "external_research": True,
+                "strategist_refresh": True,
+                **common,
+                "reason": "NON_LIVE_MODE",
+                "detail": (
+                    "Activation conditions are met and non-live mode has no "
+                    "deployable-capital gate."
+                ),
+            }
         readiness = self.hyperliquid_readiness()
+        if not readiness.get("ready_for_orders", False):
+            return {
+                "run": False,
+                "external_research": False,
+                "strategist_refresh": False,
+                **common,
+                "state": "BLOCKED",
+                "reason": "EXCHANGE_NOT_READY",
+                "detail": (
+                    "The exchange readiness check is blocking new LLM cycles; "
+                    "risk monitoring remains active."
+                ),
+                "blockers": list(readiness.get("blockers") or []),
+            }
         available = float(readiness.get("available_collateral_usd") or 0)
         positions = self.execution.positions()
         if available >= self.settings.min_llm_collateral_usd:
-            return {"run": True, "external_research": True,
-                    "strategist_refresh": True, "reason": "CAPITAL_AVAILABLE",
-                    "available_collateral_usd": available,
-                    "threshold_usd": self.settings.min_llm_collateral_usd}
-        return {"run": False, "external_research": False,
-                "strategist_refresh": False,
-                "reason": ("INSUFFICIENT_DEPLOYABLE_CAPITAL_PROTECTIONS_ACTIVE"
-                           if positions else "INSUFFICIENT_CAPITAL_NO_POSITION"),
+            return {
+                "run": True,
+                "external_research": True,
+                "strategist_refresh": True,
+                **common,
+                "reason": "CAPITAL_AVAILABLE",
+                "detail": (
+                    "Activation conditions are met and deployable collateral is "
+                    "at or above the configured threshold."
+                ),
                 "available_collateral_usd": available,
                 "threshold_usd": self.settings.min_llm_collateral_usd,
-                "risk_monitor_continues": True}
+            }
+        reason = (
+            "INSUFFICIENT_DEPLOYABLE_CAPITAL_PROTECTIONS_ACTIVE"
+            if positions
+            else "INSUFFICIENT_CAPITAL_NO_POSITION"
+        )
+        return {
+            "run": False,
+            "external_research": False,
+            "strategist_refresh": False,
+            **common,
+            "state": "WAITING",
+            "reason": reason,
+            "detail": (
+                "Deployable collateral is below the LLM-cycle threshold; open "
+                "positions and protections are still monitored deterministically."
+                if positions
+                else "Deployable collateral is below the LLM-cycle threshold and "
+                "there is no open position; the next scheduler review is automatic."
+            ),
+            "available_collateral_usd": available,
+            "threshold_usd": self.settings.min_llm_collateral_usd,
+        }
 
     def monitor_risk(self) -> list[dict]:
         marks = self.market.marks()
