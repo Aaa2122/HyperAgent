@@ -313,6 +313,24 @@ def test_live_executor_has_no_application_notional_cap() -> None:
     result = service.execute(uncapped)
 
     assert result.status == "FILLED"
+
+
+def test_dynamic_exit_without_exchange_stop_never_raises_during_reconcile() -> None:
+    repo = repository()
+    info = FakeInfo()
+    exchange = FakeExchange(info)
+    service = executor(repo, exchange, info)
+    dynamic = order().model_copy(
+        update={"place_stop_order": False, "take_profit_fractions": []}
+    )
+    assert service.execute(dynamic).status == "FILLED"
+    service._rearm_missing_stop(
+        {
+            "symbol": "BTC", "side": "LONG", "size": 0.0002,
+            "notional_usd": 13.0, "entry_px": 65_000,
+            "invalidation_px": 63_500,
+        }
+    )
     assert exchange.bulk_calls
 
 

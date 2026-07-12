@@ -841,6 +841,12 @@ class HyperliquidExecutionService:
             return
         try:
             opening_order = ApprovedOrder.model_validate(metadata["payload"])
+            if "place_stop_order" not in metadata["payload"]:
+                # Orders created before Grok gained explicit exit-policy fields
+                # always had an exchange stop by construction.
+                opening_order = opening_order.model_copy(
+                    update={"place_stop_order": True}
+                )
         except Exception as exc:
             self.repository.add_event(
                 "STOP_REARM_BLOCKED",
@@ -889,10 +895,15 @@ class HyperliquidExecutionService:
                 identity.encode("utf-8")
             ).hexdigest()[:32]
             candidate = next(
-                item
-                for item in build_protection_specs(desired, rearm_parent_cloid)
-                if item.kind == "SL"
+                (
+                    item
+                    for item in build_protection_specs(desired, rearm_parent_cloid)
+                    if item.kind == "SL"
+                ),
+                None,
             )
+            if candidate is None:
+                return
             previous = by_id.get(candidate.protection_id)
             if previous is None:
                 stop = candidate

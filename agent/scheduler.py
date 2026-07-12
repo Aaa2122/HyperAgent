@@ -132,9 +132,10 @@ class AutomationScheduler:
             enabled = bool(self._state["enabled"])
             if resumed and enabled:
                 self._state["next_cycle_at"] = self._now()
-                self._state["activation_state"] = "WAITING"
+                self._state["activation_state"] = "ACTIVE"
                 self._state["activation_reason"] = "KILL_SWITCH_RESUMED"
                 self._state["last_cycle_reason"] = "KILL_SWITCH_RESUMED"
+                self._state["cycle_policy"] = None
             elif not resumed:
                 self._state["next_cycle_at"] = None
                 self._state["activation_state"] = "BLOCKED"
@@ -312,6 +313,9 @@ class AutomationScheduler:
                 self._state["last_cycle_status"] = "RUNNING"
                 self._state["last_cycle_reason"] = None
                 self._state["next_cycle_at"] = None
+                self._state["activation_state"] = "ACTIVE"
+                self._state["activation_reason"] = "CYCLE_RUNNING"
+                self._state["cycle_policy"] = None
             policy: dict[str, Any] = {}
             try:
                 runner = getattr(self.service, "run_scheduled_cycle", self.service.run_cycle)
