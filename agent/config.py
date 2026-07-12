@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     liquidity_filter_enabled: bool = False
     liquidity_min_24h_volume_usd: float = Field(default=25_000_000.0, ge=0)
     liquidity_min_open_interest_usd: float = Field(default=10_000_000.0, ge=0)
-    liquidity_min_eligible_assets: int = Field(default=1, ge=1, le=8)
+    liquidity_min_eligible_assets: int = Field(default=1, ge=1, le=15)
     x_research_cache_seconds: float = Field(default=900.0, ge=60, le=3600)
     strategist_refresh_seconds: float = Field(default=1800.0, ge=300, le=14_400)
     min_llm_collateral_usd: float = Field(default=10.0, ge=0)

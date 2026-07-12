@@ -76,7 +76,7 @@ class ResearchBundle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     as_of: datetime
-    signals: list[ResearchSignal] = Field(min_length=3, max_length=8)
+    signals: list[ResearchSignal] = Field(min_length=3, max_length=15)
 
     @model_validator(mode="after")
     def _coverage(self) -> "ResearchBundle":
@@ -216,7 +216,7 @@ class AutomationCommand(BaseModel):
     liquidity_filter_enabled: bool | None = None
     liquidity_min_24h_volume_usd: float | None = Field(default=None, ge=0)
     liquidity_min_open_interest_usd: float | None = Field(default=None, ge=0)
-    liquidity_min_eligible_assets: int | None = Field(default=None, ge=1, le=8)
+    liquidity_min_eligible_assets: int | None = Field(default=None, ge=1, le=15)
 
     @field_validator("activation_timezone")
     @classmethod

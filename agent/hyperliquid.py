@@ -184,15 +184,14 @@ class HyperliquidMarketData:
             if index < len(contexts) and item.get("name") in SYMBOLS
         }
         us_session = UsEquitySessionClock().at(requested_at)
-        if us_session.status is not UsEquitySessionStatus.CLOSED:
-            hip_meta, hip_contexts = self.client.meta_and_asset_contexts("xyz")
-            for index, item in enumerate(hip_meta.get("universe", [])):
-                name = str(item.get("name") or "")
-                if index < len(hip_contexts) and name in HIP3_US_SYMBOLS:
-                    context_by_symbol[name] = {
-                        **hip_contexts[index],
-                        "maxLeverage": item.get("maxLeverage", 20),
-                    }
+        hip_meta, hip_contexts = self.client.meta_and_asset_contexts("xyz")
+        for index, item in enumerate(hip_meta.get("universe", [])):
+            name = str(item.get("name") or "")
+            if index < len(hip_contexts) and name in HIP3_US_SYMBOLS:
+                context_by_symbol[name] = {
+                    **hip_contexts[index],
+                    "maxLeverage": item.get("maxLeverage", 20),
+                }
         symbols = tuple(symbol for symbol in (*CORE_SYMBOLS, *HIP3_US_SYMBOLS) if symbol in context_by_symbol)
         if len(symbols) < 3:
             raise ValueError(f"Hyperliquid universe only returned {symbols}")
@@ -247,16 +246,30 @@ class HyperliquidMarketData:
             })
         ranked.sort(key=lambda item: item["score"], reverse=True)
         selected = {"BTC", "ETH", "SOL"}
-        # During US extended hours, reserve room for the strongest HIP-3 markets.
+        # Every allowlisted HIP-3 market enters the LLM universe during the US
+        # extended session; outside it remains visible in the scanner as closed.
         if us_session.status is not UsEquitySessionStatus.CLOSED:
-            selected.update(
-                item["symbol"] for item in ranked
-                if item["symbol"] in HIP3_US_SYMBOLS and len(selected) < 6
+            selected.update(HIP3_US_SYMBOLS)
+        limit = 15 if us_session.status is not UsEquitySessionStatus.CLOSED else 8
+        selected.update(
+            item["symbol"] for item in ranked
+            if item["symbol"] not in selected
+            and (
+                us_session.status is not UsEquitySessionStatus.CLOSED
+                or item["symbol"] not in HIP3_US_SYMBOLS
             )
-        selected.update(item["symbol"] for item in ranked if item["symbol"] not in selected and len(selected) < 8)
+            and len(selected) < limit
+        )
         self.last_universe_scan = [
             {**item, "selected": item["symbol"] in selected,
-             "reason": "CORE" if item["symbol"] in {"BTC", "ETH", "SOL"} else "TOP_SCORE" if item["symbol"] in selected else "BELOW_CUTOFF"}
+             "reason": (
+                 "US_SESSION_CLOSED"
+                 if item["symbol"] in HIP3_US_SYMBOLS and us_session.status is UsEquitySessionStatus.CLOSED
+                 else "CORE" if item["symbol"] in {"BTC", "ETH", "SOL"}
+                 else "US_HIP3" if item["symbol"] in HIP3_US_SYMBOLS
+                 else "TOP_SCORE" if item["symbol"] in selected
+                 else "BELOW_CUTOFF"
+             )}
             for item in ranked
         ]
 

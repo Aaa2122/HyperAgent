@@ -73,7 +73,7 @@ class ActivationConfig(BaseModel):
     liquidity_filter_enabled: bool = False
     liquidity_min_24h_volume_usd: float = Field(default=25_000_000.0, ge=0)
     liquidity_min_open_interest_usd: float = Field(default=10_000_000.0, ge=0)
-    liquidity_min_eligible_assets: int = Field(default=1, ge=1, le=8)
+    liquidity_min_eligible_assets: int = Field(default=1, ge=1, le=15)
 
     @field_validator("timezone")
     @classmethod

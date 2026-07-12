@@ -132,7 +132,7 @@ class PlaybookLLMOutput(BaseModel):
     model_config = STRICT
 
     regime_view: str = Field(min_length=20, max_length=400)
-    plans: list[AssetPlan] = Field(min_length=3, max_length=8)
+    plans: list[AssetPlan] = Field(min_length=3, max_length=15)
     changes_vs_previous: str = Field(min_length=10, max_length=600)
     ttl_hours: int = Field(ge=4, le=12)
 
@@ -329,7 +329,7 @@ class DecisionRiskReview(BaseModel):
 class FinalRiskReview(BaseModel):
     model_config = STRICT
 
-    reviews: list[DecisionRiskReview] = Field(min_length=3, max_length=8)
+    reviews: list[DecisionRiskReview] = Field(min_length=3, max_length=15)
 
     @model_validator(mode="after")
     def _coverage(self) -> "FinalRiskReview":
@@ -341,7 +341,7 @@ class FinalRiskReview(BaseModel):
 class TraderOutput(BaseModel):
     model_config = STRICT
 
-    decisions: list[AssetDecision] = Field(min_length=3, max_length=8)
+    decisions: list[AssetDecision] = Field(min_length=3, max_length=15)
     request_strategist_review: bool = False
     review_reason: Optional[str] = Field(
         default=None, min_length=10, max_length=300
@@ -429,7 +429,7 @@ class FeatureSheet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     as_of: datetime
-    assets: list[AssetFeatures] = Field(min_length=3, max_length=8)
+    assets: list[AssetFeatures] = Field(min_length=3, max_length=15)
     corr_30d_btc_eth: float = Field(ge=-1.0, le=1.0)
     corr_30d_btc_sol: float = Field(ge=-1.0, le=1.0)
 
