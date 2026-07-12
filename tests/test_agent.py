@@ -123,6 +123,8 @@ def test_decision_key_is_at_most_once() -> None:
         mark_px=65_000,
         invalidation_px=63_500,
         targets=[67_000, 68_000],
+        place_stop_order=True,
+        take_profit_fractions=[0.6, 0.4],
         leverage=4,
         decision_key="a" * 64,
     )

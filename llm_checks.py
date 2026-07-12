@@ -308,13 +308,11 @@ def size_open_order(
         notional = decision.notional_usd
         risk_usd = (notional / snap.mark_px) * stop_dist
     else:
-        risk_usd = (
-            pf.equity_usd
-            * cfg.max_portfolio_risk_frac
-            * plan.risk_alloc
-            * decision.size_frac
-        )
-        notional = (risk_usd / stop_dist) * snap.mark_px
+        # ``size_frac`` is a margin allocation on total account equity. Leverage
+        # converts that margin allocation into exposure; it is never based only
+        # on the remaining free cash.
+        notional = pf.equity_usd * decision.size_frac * decision.leverage
+        risk_usd = (notional / snap.mark_px) * stop_dist
     reasons: list[str] = []
 
     cap_asset = cfg.max_asset_notional_usd.get(decision.symbol, 0.0)

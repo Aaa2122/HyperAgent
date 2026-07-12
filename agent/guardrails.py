@@ -151,8 +151,16 @@ class GuardrailEngine:
                 "direction": direction,
                 "notional_usd": round(notional, 8),
                 "mark_px": round(snap.mark_px, 8),
+                "order_type": decision.order_type,
+                "limit_px": decision.limit_px,
                 "invalidation_px": round(invalidation, 8),
                 "targets": [round(target, 8) for target in targets],
+                "place_stop_order": decision.place_stop_order,
+                "take_profit_fractions": list(decision.take_profit_fractions),
+                "exit_management": decision.exit_management,
+                "trailing_stop_pct": decision.trailing_stop_pct,
+                "time_stop_hours": decision.time_stop_hours,
+                "move_to_break_even_at_r": decision.move_to_break_even_at_r,
                 "leverage": leverage,
             }
             decision_key = hashlib.sha256(

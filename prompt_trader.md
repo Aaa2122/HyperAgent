@@ -23,7 +23,8 @@ request_strategist_review = true).
   targets, risk_alloc, conviction) with expiry.
 - SNAPSHOT: fresh per-asset market state (mark price, ATR, spread, funding, data age).
 - POSITIONS: open positions including side, entry, invalidation, notional and PnL.
-- PORTFOLIO: available collateral, open notional and unrealized PnL.
+- PORTFOLIO: total equity, available collateral, cash/margin, gross and net
+  exposure, unrealized PnL, fees, pending orders and exposure by asset/class.
 
 # DECISION SPACE — exactly one decision for each asset in SNAPSHOT
 
@@ -72,6 +73,18 @@ defect.
   not recommend or calculate a preferred size. Never propose less than 50 USD: tiny
   positions and fragmented take-profits are economically and operationally invalid.
 - horizon_hours is your expected holding horizon and only informs funding estimates.
+- Choose MARKET or LIMIT. LIMIT requires an explicit limit_px; use it when entry
+  quality matters more than immediate fill, otherwise MARKET is valid.
+- size_frac is the fraction of TOTAL ACCOUNT EQUITY allocated as margin, not a
+  fraction of free cash. The intended notional is `equity * size_frac * leverage`.
+  When this would create an uneconomic micro-position, either choose a higher
+  leverage supported by the setup/venue or do not open; never silently shrink it.
+- You own exit management. `place_stop_order=false` means the invalidation remains
+  analytical but no permanent SL is submitted. `take_profit_fractions=[]` means no
+  fixed TP. Fractions map in order to PLAYBOOK targets and need not sum to 1, leaving
+  a runner. Choose DYNAMIC, FIXED, HYBRID, TRAILING or TIME_STOP explicitly. Dynamic
+  management may use later REDUCE/CLOSE decisions, thesis change or break-even logic.
+  No fixed TP/SL is added unless you explicitly request it.
 
 # OUTPUT
 

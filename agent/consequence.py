@@ -41,7 +41,11 @@ def simulate_consequences(
             ))
             continue
 
-        notional = float(decision.notional_usd or 0)
+        notional = float(
+            decision.notional_usd
+            if decision.notional_usd is not None
+            else equity_usd * decision.size_frac * decision.leverage
+        )
         leverage = max(1, decision.leverage)
         stop = float(plan.invalidation_px or asset.mark_px)
         stop_distance = abs(asset.mark_px - stop)

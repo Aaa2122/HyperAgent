@@ -94,6 +94,8 @@ class PromptPosition(BaseModel):
     side: Literal["LONG", "SHORT"]
     entry_px: float = Field(gt=0)
     mark_px: float = Field(gt=0)
+    order_type: Literal["MARKET", "LIMIT"] = "MARKET"
+    limit_px: float | None = None
     invalidation_px: float = Field(gt=0)
     notional_usd: float = Field(gt=0)
     leverage: int = Field(ge=1)
@@ -101,6 +103,12 @@ class PromptPosition(BaseModel):
     roe_pct: float
     unrealized_r: float
     distance_to_invalidation_atr: float = Field(ge=0)
+    exit_management: str = "FIXED"
+    place_stop_order: bool = True
+    take_profit_fractions: list[float] = Field(default_factory=list, max_length=4)
+    trailing_stop_pct: float | None = None
+    time_stop_hours: float | None = None
+    move_to_break_even_at_r: float | None = None
 
 
 class StructuredReason(BaseModel):
@@ -164,8 +172,16 @@ class ApprovedOrder(BaseModel):
     direction: Literal["LONG", "SHORT"]
     notional_usd: float = Field(gt=0)
     mark_px: float = Field(gt=0)
+    order_type: Literal["MARKET", "LIMIT"] = "MARKET"
+    limit_px: float | None = None
     invalidation_px: float = Field(gt=0)
     targets: list[float] = Field(default_factory=list, max_length=4)
+    place_stop_order: bool = False
+    take_profit_fractions: list[float] = Field(default_factory=list, max_length=4)
+    exit_management: str = "DYNAMIC"
+    trailing_stop_pct: float | None = None
+    time_stop_hours: float | None = None
+    move_to_break_even_at_r: float | None = None
     leverage: int = Field(default=1, ge=1, le=50)
     decision_key: str
 

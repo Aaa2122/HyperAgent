@@ -229,6 +229,8 @@ class HyperliquidExecutionService:
             )
 
         size, limit_px, is_buy = self._wire_values(order)
+        if order.order_type == "LIMIT" and order.limit_px is not None:
+            limit_px = self._round_price(order.symbol, order.limit_px)
         if size <= 0:
             self.repository.mark_intent(intent_id, "REJECTED")
             return ExecutionResult(
@@ -325,20 +327,22 @@ class HyperliquidExecutionService:
         is_buy: bool,
         specs: list[ProtectionSpec],
     ) -> str:
-        stop = next(spec for spec in specs if spec.kind == "SL")
+        stop = next((spec for spec in specs if spec.kind == "SL"), None)
         take_profits = sorted(
             (spec for spec in specs if spec.kind == "TP"),
             key=lambda spec: spec.level_index,
         )
         primary_tp = take_profits[0] if take_profits else None
-        atomic_specs = ([primary_tp] if primary_tp is not None else []) + [stop]
+        atomic_specs = ([primary_tp] if primary_tp is not None else []) + (
+            [stop] if stop is not None else []
+        )
         requests: list[dict[str, Any]] = [
             {
                 "coin": order.symbol,
                 "is_buy": is_buy,
                 "sz": size,
                 "limit_px": limit_px,
-                "order_type": {"limit": {"tif": "Ioc"}},
+                "order_type": {"limit": {"tif": "Gtc" if order.order_type == "LIMIT" else "Ioc"}},
                 "reduce_only": False,
                 "cloid": Cloid.from_str(entry_cloid),
             }
@@ -733,6 +737,11 @@ class HyperliquidExecutionService:
             current_parent_id = (
                 current_open["intent_id"] if current_open is not None else None
             )
+            if current_open is not None and not bool(
+                current_open.get("payload", {}).get("place_stop_order", True)
+            ):
+                # Dynamic/no-stop management was explicitly selected by Grok.
+                continue
             stop_rows = [
                 item
                 for item in all_protections
@@ -997,6 +1006,12 @@ class HyperliquidExecutionService:
                     "liquidation_px": float(position.get("liquidationPx") or 0),
                     "invalidation_px": float(payload["invalidation_px"]),
                     "targets": list(payload.get("targets", [])),
+                    "exit_management": payload.get("exit_management", "FIXED"),
+                    "place_stop_order": payload.get("place_stop_order", True),
+                    "take_profit_fractions": list(payload.get("take_profit_fractions", [])),
+                    "trailing_stop_pct": payload.get("trailing_stop_pct"),
+                    "time_stop_hours": payload.get("time_stop_hours"),
+                    "move_to_break_even_at_r": payload.get("move_to_break_even_at_r"),
                     "opened_at": metadata["created_at"],
                 }
             )

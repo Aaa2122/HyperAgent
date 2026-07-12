@@ -134,6 +134,8 @@ def order() -> ApprovedOrder:
         mark_px=65_000,
         invalidation_px=63_500,
         targets=[66_000, 67_000, 68_000],
+        place_stop_order=True,
+        take_profit_fractions=[0.5, 0.3, 0.2],
         leverage=4,
         decision_key="b" * 64,
     )

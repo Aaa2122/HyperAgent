@@ -46,11 +46,11 @@ def _identity(parent_cloid: str, kind: str, index: int, trigger_px: float) -> tu
 
 def build_protection_specs(order: ApprovedOrder, parent_cloid: str) -> list[ProtectionSpec]:
     specs: list[ProtectionSpec] = []
-    protection_id, cloid = _identity(
-        parent_cloid, "SL", 0, order.invalidation_px
-    )
-    specs.append(
-        ProtectionSpec(
+    if order.place_stop_order:
+        protection_id, cloid = _identity(
+            parent_cloid, "SL", 0, order.invalidation_px
+        )
+        specs.append(ProtectionSpec(
             protection_id=protection_id,
             cloid=cloid,
             symbol=order.symbol,
@@ -60,11 +60,10 @@ def build_protection_specs(order: ApprovedOrder, parent_cloid: str) -> list[Prot
             trigger_px=order.invalidation_px,
             size_fraction=1.0,
             original_notional_usd=order.notional_usd,
-        )
-    )
-    targets = order.targets[:4]
+        ))
+    targets = order.targets[:len(order.take_profit_fractions)]
     for index, (trigger_px, fraction) in enumerate(
-        zip(targets, target_allocations(len(targets))),
+        zip(targets, order.take_profit_fractions),
         start=1,
     ):
         protection_id, cloid = _identity(parent_cloid, "TP", index, trigger_px)

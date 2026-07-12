@@ -52,6 +52,31 @@ def _feature_hash(feature_sheet: FeatureSheet) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def _portfolio_prompt(equity_usd: float | None, positions: list[dict]) -> dict:
+    equity = float(equity_usd or 0)
+    signed = {
+        str(p.get("symbol")): float(p.get("notional_usd", 0))
+        * (1 if p.get("side") == "LONG" else -1)
+        for p in positions
+    }
+    by_class = {"crypto": 0.0, "us_equity_hip3": 0.0}
+    for symbol, exposure in signed.items():
+        key = "us_equity_hip3" if symbol.startswith("xyz:") else "crypto"
+        by_class[key] += exposure
+    margin_used = sum(float(p.get("margin_used_usd", 0)) for p in positions)
+    return {
+        "total_equity_usd": equity,
+        "available_collateral_usd": max(0.0, equity - margin_used),
+        "margin_used_usd": margin_used,
+        "gross_exposure_usd": sum(abs(value) for value in signed.values()),
+        "net_exposure_usd": sum(signed.values()),
+        "exposure_by_asset_usd": signed,
+        "exposure_by_class_usd": by_class,
+        "unrealized_pnl_usd": sum(float(p.get("unrealized_pnl_usd", 0)) for p in positions),
+        "pending_orders": "exchange reconciled protection levels are included in POSITIONS",
+    }
+
+
 def build_conviction_diagnostics(
     playbook: PlaybookRecord,
     signals: list[StrategySignal],
@@ -505,15 +530,7 @@ class GrokDecisionProvider:
                     cached.model_dump(mode="json") if cached is not None else None
                 ),
                 "POSITIONS": [p.model_dump(mode="json") for p in prompt_positions],
-                "PORTFOLIO": {
-                    "available_collateral_usd": equity_usd,
-                    "open_notional_usd": sum(
-                        float(p.get("notional_usd", 0)) for p in positions
-                    ),
-                    "unrealized_pnl_usd": sum(
-                        float(p.get("unrealized_pnl_usd", 0)) for p in positions
-                    ),
-                },
+                "PORTFOLIO": _portfolio_prompt(equity_usd, positions),
                 "NOW_UTC": now.isoformat(),
             }
             strategist_prompt = self._strategist_system_prompt()
@@ -589,15 +606,7 @@ class GrokDecisionProvider:
             "PLAYBOOK": playbook.model_dump(mode="json"),
             "SNAPSHOT": feature_sheet.model_dump(mode="json"),
             "POSITIONS": [p.model_dump(mode="json") for p in prompt_positions],
-            "PORTFOLIO": {
-                "available_collateral_usd": equity_usd,
-                "open_notional_usd": sum(
-                    float(p.get("notional_usd", 0)) for p in positions
-                ),
-                "unrealized_pnl_usd": sum(
-                    float(p.get("unrealized_pnl_usd", 0)) for p in positions
-                ),
-            },
+            "PORTFOLIO": _portfolio_prompt(equity_usd, positions),
         }
         trader_prompt = self._trader_system_prompt()
         started = time.monotonic()
@@ -745,6 +754,12 @@ class GrokDecisionProvider:
                     roe_pct=float(position.get("roe_pct", 0)),
                     unrealized_r=unrealized_r,
                     distance_to_invalidation_atr=abs(mark - invalidation) / asset.atr_4h,
+                    exit_management=str(position.get("exit_management", "FIXED")),
+                    place_stop_order=bool(position.get("place_stop_order", True)),
+                    take_profit_fractions=list(position.get("take_profit_fractions", [])),
+                    trailing_stop_pct=position.get("trailing_stop_pct"),
+                    time_stop_hours=position.get("time_stop_hours"),
+                    move_to_break_even_at_r=position.get("move_to_break_even_at_r"),
                 )
             )
         return projected

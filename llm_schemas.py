@@ -203,20 +203,40 @@ class AssetDecision(BaseModel):
         gt=0,
         description="Notionnel absolu proposé par le modèle pour OPEN. Ignoré sinon.",
     )
+    order_type: Literal["MARKET", "LIMIT"] = "MARKET"
+    limit_px: Optional[float] = Field(default=None, gt=0)
     horizon_hours: float = Field(
         default=8.0, ge=0.25, le=168.0,
         description="Horizon prévu, utilisé pour estimer le funding.",
     )
+    exit_management: Literal[
+        "DYNAMIC", "FIXED", "HYBRID", "TRAILING", "TIME_STOP"
+    ] = "DYNAMIC"
+    place_stop_order: bool = False
+    take_profit_fractions: list[float] = Field(default_factory=list, max_length=4)
+    trailing_stop_pct: Optional[float] = Field(default=None, gt=0, le=50)
+    time_stop_hours: Optional[float] = Field(default=None, ge=0.25, le=168)
+    move_to_break_even_at_r: Optional[float] = Field(default=None, gt=0, le=20)
     confidence: float = Field(ge=0.0, le=1.0)
     rationale: str = Field(min_length=10, max_length=300)
 
     @model_validator(mode="after")
     def _coherence(self) -> "AssetDecision":
+        if sum(self.take_profit_fractions) > 1.0 + 1e-9:
+            raise ValueError(f"{self.symbol}: somme des fractions TP > 1")
+        if any(value <= 0 for value in self.take_profit_fractions):
+            raise ValueError(f"{self.symbol}: fractions TP strictement positives")
+        if self.exit_management == "TRAILING" and self.trailing_stop_pct is None:
+            raise ValueError(f"{self.symbol}: TRAILING exige trailing_stop_pct")
+        if self.exit_management == "TIME_STOP" and self.time_stop_hours is None:
+            raise ValueError(f"{self.symbol}: TIME_STOP exige time_stop_hours")
         if self.action == "OPEN":
             if self.direction is None:
                 raise ValueError(f"{self.symbol}: OPEN exige direction")
             if self.size_frac <= 0.0:
                 raise ValueError(f"{self.symbol}: OPEN exige size_frac > 0")
+            if self.order_type == "LIMIT" and self.limit_px is None:
+                raise ValueError(f"{self.symbol}: LIMIT exige limit_px")
         elif self.action == "REDUCE":
             if self.direction is not None:
                 raise ValueError(
