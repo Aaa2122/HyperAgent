@@ -14,6 +14,7 @@ from agent.domain import KillSwitchState
 from agent.execution import PaperExecutionService
 from agent.graph import GraphDependencies, build_graph
 from agent.guardrails import GuardrailEngine
+from agent.history import calculate_trade_metrics, reconstruct_closed_trades
 from agent.hyperliquid import HyperliquidInfoClient, HyperliquidMarketData
 from agent.hyperliquid_execution import (
     HyperliquidExecutionService,
@@ -41,6 +42,8 @@ class AgentService:
         self._risk_snapshot: dict = {"status": "INITIALIZING", "positions": []}
         self._readiness_cache: tuple[float, dict] | None = None
         self._analytics_cache: tuple[float, dict] | None = None
+        self._trade_history_cache: tuple[float, dict] | None = None
+        self._trade_history_client: HyperliquidInfoClient | None = None
         self._last_llm_cycle_at = 0.0
         self._last_llm_marks: dict[str, float] = {}
         self._material_event_pending = False
@@ -587,6 +590,102 @@ class AgentService:
         if self.settings.agent_mode in {AgentMode.TESTNET, AgentMode.LIVE}:
             data["positions"] = self.execution.positions()
         return data
+
+    def trade_history(self, *, fresh: bool = False) -> dict:
+        """Return an idempotent computed view of completed exchange trades."""
+
+        now_mono = time.monotonic()
+        if (
+            not fresh
+            and self._trade_history_cache
+            and now_mono - self._trade_history_cache[0] < 30
+        ):
+            return self._trade_history_cache[1]
+
+        account_address = self.settings.hyperliquid_account_address or getattr(
+            self.market, "account_address", None
+        )
+        if not account_address:
+            payload = {"trades": [], "total": 0, "as_of": None}
+            self._trade_history_cache = (now_mono, payload)
+            return payload
+
+        history_network = (
+            self.settings.hyperliquid_execution_network
+            if self.settings.agent_mode in {AgentMode.TESTNET, AgentMode.LIVE}
+            else self.settings.hyperliquid_network
+        )
+        if (
+            isinstance(self.market, HyperliquidMarketData)
+            and self.market.network == history_network
+        ):
+            client = self.market.client
+        else:
+            if self._trade_history_client is None:
+                api_url = (
+                    self.settings.hyperliquid_execution_api_url
+                    if self.settings.agent_mode in {AgentMode.TESTNET, AgentMode.LIVE}
+                    else self.settings.hyperliquid_api_url
+                )
+                self._trade_history_client = HyperliquidInfoClient(
+                    api_url,
+                    timeout_seconds=self.settings.hyperliquid_timeout_seconds,
+                )
+            client = self._trade_history_client
+
+        try:
+            fills = client.user_fills(account_address)
+        except RuntimeError:
+            if self._trade_history_cache:
+                return self._trade_history_cache[1]
+            return {"trades": [], "total": 0, "as_of": None}
+
+        now = datetime.now(timezone.utc)
+        funding_records: list[dict] | None = []
+        fill_times: list[float] = []
+        for item in fills:
+            try:
+                fill_times.append(float(item["time"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        if fill_times:
+            earliest = min(fill_times)
+            earliest_ms = int(earliest if earliest >= 10_000_000_000 else earliest * 1000)
+            try:
+                funding_records = client.user_funding(
+                    account_address,
+                    earliest_ms,
+                    int(now.timestamp() * 1000),
+                )
+            except RuntimeError:
+                # Fills remain usable.  Every trade explicitly reports that its
+                # zero funding value is unavailable rather than exchange-backed.
+                funding_records = None
+
+        context = self.repository.trade_history_context()
+        trades = reconstruct_closed_trades(
+            fills,
+            funding_records=funding_records,
+            intents=context["intents"],
+            protections=context["protections"],
+            cycles=context["cycles"],
+        )
+        payload = {
+            "trades": [item.model_dump(mode="json") for item in trades],
+            "total": len(trades),
+            "as_of": now.isoformat(),
+        }
+        self._trade_history_cache = (now_mono, payload)
+        return payload
+
+    def trades(self, *, fresh: bool = False) -> dict:
+        """Compatibility alias for consumers naming the resource directly."""
+
+        return self.trade_history(fresh=fresh)
+
+    def trade_metrics(self, *, fresh: bool = False) -> dict:
+        history = self.trade_history(fresh=fresh)
+        return calculate_trade_metrics(history["trades"]).model_dump(mode="json")
 
     def performance(self) -> dict:
         if not isinstance(self.market, HyperliquidMarketData):

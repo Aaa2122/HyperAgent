@@ -470,6 +470,42 @@ class Repository:
             else:
                 row.notional_usd *= remaining
 
+    def trade_history_context(self, limit: int = 2_000) -> dict[str, list[dict[str, Any]]]:
+        """Return local enrichment data for the computed exchange trade view.
+
+        Trade rows themselves are intentionally not persisted: rebuilding from
+        immutable fills avoids a migration and makes refreshes idempotent.
+        """
+
+        with self.sessions() as session:
+            intents = session.scalars(
+                select(OrderIntentRow)
+                .order_by(desc(OrderIntentRow.created_at))
+                .limit(limit)
+            ).all()
+            protections = session.scalars(
+                select(ProtectiveOrderRow)
+                .order_by(desc(ProtectiveOrderRow.created_at))
+                .limit(limit)
+            ).all()
+            cycles = session.scalars(
+                select(CycleRow)
+                .order_by(desc(CycleRow.started_at))
+                .limit(limit)
+            ).all()
+        return {
+            "intents": [self._intent_dict(row) for row in intents],
+            "protections": [self._protective_dict(row) for row in protections],
+            "cycles": [
+                {
+                    "cycle_id": row.cycle_id,
+                    "started_at": _iso(row.started_at),
+                    "state": row.state,
+                }
+                for row in cycles
+            ],
+        }
+
     def dashboard(self, limit: int = 20) -> dict[str, Any]:
         with self.sessions() as session:
             cycles = session.scalars(
