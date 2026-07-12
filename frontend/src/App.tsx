@@ -6,6 +6,7 @@ import {
   Check,
   ChevronRight,
   CircleDollarSign,
+  History,
   Pause,
   Play,
   RefreshCw,
@@ -20,13 +21,17 @@ import { PnlChart } from "@/components/PnlChart";
 import { PositionChart } from "@/components/PositionChart";
 import { PositionsPanel } from "@/components/PositionsPanel";
 import { AgentWorkspace } from "@/components/AgentWorkspace";
+import { TradeHistoryPanel } from "@/components/TradeHistoryPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type {
   DashboardData,
   HyperliquidReadiness,
+  InstrumentRegistryData,
   PerformanceData,
   PositionAnalytics,
+  TradeHistoryData,
+  TradeMetrics,
 } from "@/types";
 
 const usd = new Intl.NumberFormat("fr-FR", {
@@ -41,12 +46,19 @@ const ranges = [
   { id: "month", label: "1M" },
   { id: "all", label: "Tout" },
 ] as const;
-type View = "overview" | "positions" | "agent" | "protections" | "settings";
+type View =
+  | "overview"
+  | "positions"
+  | "agent"
+  | "protections"
+  | "history"
+  | "settings";
 const views: Array<{ id: View; label: string; icon: typeof Activity }> = [
   { id: "overview", label: "Vue d’ensemble", icon: ChartNoAxesCombined },
   { id: "positions", label: "Positions", icon: CircleDollarSign },
   { id: "agent", label: "Agent", icon: BrainCircuit },
   { id: "protections", label: "TP & SL", icon: ShieldCheck },
+  { id: "history", label: "Historique", icon: History },
   { id: "settings", label: "Réglages", icon: Settings2 },
 ];
 
@@ -55,8 +67,17 @@ export default function App() {
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [analytics, setAnalytics] = useState<PositionAnalytics | null>(null);
   const [readiness, setReadiness] = useState<HyperliquidReadiness | null>(null);
+  const [tradeHistory, setTradeHistory] = useState<TradeHistoryData | null>(null);
+  const [tradeMetrics, setTradeMetrics] = useState<TradeMetrics | null>(null);
+  const [instrumentRegistry, setInstrumentRegistry] =
+    useState<InstrumentRegistryData | null>(null);
   const [view, setView] = useState<View>(
-    () => (localStorage.getItem("dashboard-view") as View) || "overview",
+    () => {
+      const candidate =
+        (window.location.hash.slice(1) as View) ||
+        (localStorage.getItem("dashboard-view") as View);
+      return views.some((item) => item.id === candidate) ? candidate : "overview";
+    },
   );
   const [range, setRange] = useState<keyof PerformanceData["ranges"]>("day");
   const [busy, setBusy] = useState(false);
@@ -107,8 +128,61 @@ export default function App() {
   }, [refresh]);
 
   useEffect(() => {
-    localStorage.setItem("dashboard-view", view);
+    if (view !== "history") return;
+    let cancelled = false;
+    const loadHistory = async () => {
+      const results = await Promise.allSettled(
+        ["/api/trades", "/api/trades/metrics"].map(async (url) => {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(url);
+          return response.json();
+        }),
+      );
+      if (cancelled) return;
+      if (results[0].status === "fulfilled") setTradeHistory(results[0].value);
+      if (results[1].status === "fulfilled") setTradeMetrics(results[1].value);
+    };
+    void loadHistory();
+    const timer = window.setInterval(() => void loadHistory(), 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [view]);
+
+  useEffect(() => {
+    if (view !== "agent") return;
+    let cancelled = false;
+    const loadInstruments = async () => {
+      try {
+        const response = await fetch("/api/instruments");
+        if (!response.ok) return;
+        const registry = await response.json();
+        if (!cancelled) setInstrumentRegistry(registry);
+      } catch {
+        // The dedicated registry explains upstream availability in its payload.
+      }
+    };
+    void loadInstruments();
+    const timer = window.setInterval(() => void loadInstruments(), 60000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [view]);
+
+  useEffect(() => {
+    localStorage.setItem("dashboard-view", view);
+    if (window.location.hash !== `#${view}`) window.location.hash = view;
+  }, [view]);
+  useEffect(() => {
+    const onHashChange = () => {
+      const candidate = window.location.hash.slice(1) as View;
+      if (views.some((item) => item.id === candidate)) setView(candidate);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
 
   useEffect(() => {
     if (view !== "agent") return;
@@ -142,9 +216,17 @@ export default function App() {
       const index = Number(event.key) - 1;
       if (index >= 0 && index < views.length) setView(views[index].id);
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+        const navigation = document.querySelector<HTMLElement>(
+          '[aria-label="Navigation principale"]',
+        );
+        if (!navigation?.contains(document.activeElement)) return;
         const current = views.findIndex((item) => item.id === view);
         const delta = event.key === "ArrowRight" ? 1 : -1;
-        setView(views[(current + delta + views.length) % views.length].id);
+        const next = views[(current + delta + views.length) % views.length];
+        setView(next.id);
+        window.requestAnimationFrame(() =>
+          document.getElementById(`nav-${next.id}`)?.focus(),
+        );
       }
     };
     window.addEventListener("keydown", onKey);
@@ -260,6 +342,8 @@ export default function App() {
           {views.map(({ id, label, icon: Icon }, index) => (
             <button
               role="tab"
+              id={`nav-${id}`}
+              aria-controls={`panel-${id}`}
               aria-selected={view === id}
               title={`Raccourci ${index + 1}`}
               key={id}
@@ -295,8 +379,9 @@ export default function App() {
         )}
 
         <section
-          key={view}
+          id={`panel-${view}`}
           role="tabpanel"
+          aria-labelledby={`nav-${view}`}
           className="workspace-panel panel-enter flex-1"
         >
           {view === "overview" && (
@@ -319,7 +404,13 @@ export default function App() {
           {view === "positions" && (
             <PositionsPanel data={data} analytics={analytics} />
           )}
-          {view === "agent" && <AgentPanel data={data} latest={latest} />}
+          {view === "agent" && (
+            <AgentPanel
+              data={data}
+              latest={latest}
+              instrumentRegistry={instrumentRegistry}
+            />
+          )}
           {view === "protections" && (
             <Protections
               data={data}
@@ -327,6 +418,9 @@ export default function App() {
               busy={busy}
               post={post}
             />
+          )}
+          {view === "history" && (
+            <TradeHistoryPanel history={tradeHistory} metrics={tradeMetrics} />
           )}
           {view === "settings" && (
             <SettingsPanel data={data} busy={busy} post={post} />
@@ -642,9 +736,11 @@ function PositionsLegacy({
 function AgentPanel({
   data,
   latest,
+  instrumentRegistry,
 }: {
   data: DashboardData | null;
   latest: DashboardData["cycles"][number] | undefined;
+  instrumentRegistry: InstrumentRegistryData | null;
 }) {
   return (
     <div>
@@ -653,7 +749,11 @@ function AgentPanel({
         title="Intelligence & journal"
         subtitle="Chaque recherche, décision, contrôle et coût est consultable au même endroit."
       />
-      <AgentWorkspace data={data} latest={latest} />
+      <AgentWorkspace
+        data={data}
+        latest={latest}
+        instrumentRegistry={instrumentRegistry}
+      />
     </div>
   );
 }

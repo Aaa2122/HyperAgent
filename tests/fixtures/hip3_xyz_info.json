@@ -1,0 +1,158 @@
+{
+  "perpDexs": [
+    null,
+    {
+      "name": "xyz",
+      "fullName": "XYZ",
+      "deployer": "0x1111111111111111111111111111111111111111",
+      "oracleUpdater": null,
+      "feeRecipient": null
+    },
+    {
+      "name": "other",
+      "fullName": "Other DEX",
+      "deployer": "0x2222222222222222222222222222222222222222"
+    }
+  ],
+  "metaAndAssetCtxs": [
+    {
+      "universe": [
+        {
+          "name": "xyz:XYZ100",
+          "szDecimals": 4,
+          "maxLeverage": 20,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:TSLA",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:NVDA",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:AAPL",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:MSFT",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:AMZN",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:META",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        },
+        {
+          "name": "xyz:GOOGL",
+          "szDecimals": 3,
+          "maxLeverage": 10,
+          "onlyIsolated": true,
+          "marginMode": "strictIsolated"
+        }
+      ],
+      "marginTables": [],
+      "collateralToken": 0
+    },
+    [
+      {
+        "markPx": "25451.0",
+        "midPx": "25451.0",
+        "oraclePx": "25372.0",
+        "prevDayPx": "25956.0",
+        "dayNtlVlm": "462.9758",
+        "openInterest": "0.0854",
+        "funding": "0.0002110251"
+      },
+      {
+        "markPx": "465.13",
+        "midPx": "464.92",
+        "oraclePx": "450.78",
+        "prevDayPx": "447.49",
+        "dayNtlVlm": "1200450.25",
+        "openInterest": "1208.5",
+        "funding": "0.0"
+      },
+      {
+        "markPx": "177.06",
+        "midPx": "177.04",
+        "oraclePx": "188.15",
+        "prevDayPx": "177.0",
+        "dayNtlVlm": "2192853.0",
+        "openInterest": "943.0",
+        "funding": "0.0"
+      },
+      {
+        "markPx": "215.32",
+        "midPx": "215.30",
+        "oraclePx": "215.28",
+        "prevDayPx": "213.55",
+        "dayNtlVlm": "875420.0",
+        "openInterest": "522.4",
+        "funding": "0.000001"
+      },
+      {
+        "markPx": "505.44",
+        "midPx": "505.40",
+        "oraclePx": "505.37",
+        "prevDayPx": "501.81",
+        "dayNtlVlm": "653000.0",
+        "openInterest": "302.75",
+        "funding": "-0.000002"
+      },
+      {
+        "markPx": "224.85",
+        "midPx": "224.83",
+        "oraclePx": "224.80",
+        "prevDayPx": "222.14",
+        "dayNtlVlm": "944100.0",
+        "openInterest": "641.5",
+        "funding": "0.0"
+      },
+      {
+        "markPx": "716.20",
+        "midPx": "716.10",
+        "oraclePx": "716.00",
+        "prevDayPx": "709.25",
+        "dayNtlVlm": "731500.0",
+        "openInterest": "284.25",
+        "funding": "0.000003"
+      },
+      {
+        "markPx": "196.74",
+        "midPx": "196.72",
+        "oraclePx": "196.70",
+        "prevDayPx": "194.81",
+        "dayNtlVlm": "816700.0",
+        "openInterest": "754.0",
+        "funding": "-0.000001"
+      }
+    ]
+  ],
+  "perpDexStatus": {
+    "totalNetDeposit": "4103492112.4478230476"
+  }
+}

@@ -65,6 +65,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def trade_metrics() -> dict:
         return service.trade_metrics()
 
+    @app.get("/api/instruments")
+    def instruments() -> dict:
+        return service.instrument_registry()
+
     @app.get("/api/positions/analytics")
     def position_analytics() -> dict:
         return service.position_analytics()

@@ -3,6 +3,9 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BrainCircuit,
+  CircleCheck,
+  CircleX,
+  Gauge,
   Minus,
   Radio,
   Sparkles,
@@ -14,7 +17,13 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
   const assets = latest?.state.market_snapshot?.assets ?? [];
   const decisions = latest?.state.decision?.trader?.decisions ?? [];
   const provider = latest?.state.decision?.provider ?? "inconnu";
-  const isGrok = provider.toLowerCase().includes("grok");
+  const provenance =
+    latest?.state.decision?.provenance ??
+    latest?.state.decision_provenance ??
+    (provider.toLowerCase().includes("grok") ? "GROK" : "RULE_FALLBACK");
+  const decisionStatus =
+    latest?.state.decision?.status ?? latest?.state.decision_status ?? "NOMINAL";
+  const isGrok = provenance === "GROK" || provenance === "CACHE";
   const [selected, setSelected] = useState("");
   const active =
     selected && plans.some((item) => item.symbol === selected)
@@ -23,6 +32,9 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
   const plan = plans.find((item) => item.symbol === active);
   const asset = assets.find((item) => item.symbol === active);
   const decision = decisions.find((item) => item.symbol === active);
+  const diagnostic = latest?.state.decision?.conviction_diagnostics?.find(
+    (item) => item.symbol === active,
+  );
   const ranked = useMemo(
     () =>
       plans
@@ -55,8 +67,8 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
         <div>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#bf5af2] opacity-40" />
-              <span className="relative h-2 w-2 rounded-full bg-[#bf5af2]" />
+              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 ${decisionStatus === "DEGRADED" ? "bg-[#ff9f0a]" : "bg-[#bf5af2]"}`} />
+              <span className={`relative h-2 w-2 rounded-full ${decisionStatus === "DEGRADED" ? "bg-[#ff9f0a]" : "bg-[#bf5af2]"}`} />
             </span>
             <p className="eyebrow">
               {isGrok ? "Grok Intelligence Map" : "Intelligence Map · fallback déterministe"}
@@ -70,19 +82,24 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
             analyse structurée · source {provider}.
           </p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {ranked.map((item) => (
-            <button
-              key={item.symbol}
-              onClick={() => setSelected(item.symbol)}
-              className={`rounded-full px-3 py-1.5 text-[10px] transition duration-300 ${active === item.symbol ? "bg-white text-black shadow-[0_0_30px_rgba(255,255,255,.12)]" : "bg-white/[.04] text-white/35 hover:bg-white/[.08] hover:text-white/70"}`}
-            >
-              {item.symbol}
-              <span className="ml-1.5 font-mono opacity-55">
-                {item.strength}
-              </span>
-            </button>
-          ))}
+        <div className="flex flex-col items-end gap-2">
+          <span className={`rounded-full px-3 py-1 text-[9px] font-semibold tracking-[.08em] ${decisionStatus === "DEGRADED" ? "bg-[#ff9f0a]/10 text-[#ff9f0a]" : "bg-[#30d158]/10 text-[#30d158]"}`}>
+            {decisionStatus} · {provenance.replaceAll("_", " ")}
+          </span>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {ranked.map((item) => (
+              <button
+                key={item.symbol}
+                onClick={() => setSelected(item.symbol)}
+                className={`rounded-full px-3 py-1.5 text-[10px] transition duration-300 ${active === item.symbol ? "bg-white text-black shadow-[0_0_30px_rgba(255,255,255,.12)]" : "bg-white/[.04] text-white/35 hover:bg-white/[.08] hover:text-white/70"}`}
+              >
+                {item.symbol}
+                <span className="ml-1.5 font-mono opacity-55">
+                  {item.strength}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </header>
       <div className="mt-6 grid gap-6 lg:grid-cols-[220px_1fr_260px]">
@@ -164,8 +181,72 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
           </div>
         </aside>
       </div>
+      {diagnostic && (
+        <div className="mt-6 border-t border-white/[.06] pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Gauge className="h-3.5 w-3.5 text-white/40" />
+              <p className="eyebrow">Pourquoi {diagnostic.level.toLowerCase()} ?</p>
+            </div>
+            <span className={`flex items-center gap-1.5 text-[10px] ${diagnostic.actionable ? "text-[#30d158]" : "text-[#ff9f0a]"}`}>
+              {diagnostic.actionable ? <CircleCheck className="h-3 w-3" /> : <CircleX className="h-3 w-3" />}
+              {diagnostic.actionable ? "Plan actionnable" : "Plan non actionnable"}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-x-8 sm:grid-cols-2">
+            {diagnostic.reasons.map((reason) => (
+              <details key={`${diagnostic.symbol}-${reason.code}`} className="group border-b border-white/[.05] py-3">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[11px]">
+                  <span className="text-white/60">{reasonTitle(reason.code)}</span>
+                  <span className={`text-[8px] font-semibold tracking-[.1em] ${impactTone(reason.impact)}`}>
+                    {impactLabel(reason.impact)}
+                  </span>
+                </summary>
+                <p className="mt-2 text-[10px] leading-relaxed text-white/35">{reason.message}</p>
+                {Object.keys(reason.evidence).length > 0 && (
+                  <p className="mt-2 font-mono text-[9px] text-white/25">
+                    {Object.entries(reason.evidence).map(([key, value]) => `${key}: ${formatEvidence(value)}`).join(" · ")}
+                  </p>
+                )}
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
+}
+
+const reasonTitles: Record<string, string> = {
+  PLAN_IS_FLAT: "Aucun biais directionnel",
+  BELOW_PLAN_CONVICTION_THRESHOLD: "Conviction sous le seuil d’action",
+  NO_DIRECTIONAL_TECHNICAL_EDGE: "Pas d’avantage technique directionnel",
+  CONFLICTING_TECHNICAL_SIGNALS: "Signaux techniques contradictoires",
+  TECHNICAL_ALIGNMENT: "Convergence technique",
+  TECHNICAL_PLAN_MISMATCH: "Technique opposée au plan",
+  NO_VERIFIED_CATALYST: "Aucun catalyseur vérifié",
+  RESEARCH_SIGNAL_NEUTRAL: "Recherche externe neutre",
+  RESEARCH_PLAN_CONFLICT: "Recherche opposée au plan",
+  RESEARCH_ALIGNMENT: "Recherche alignée avec le plan",
+  MANIPULATION_RISK_DOMINATES: "Risque de manipulation dominant",
+};
+
+function reasonTitle(code: string) {
+  return reasonTitles[code] ?? code.replaceAll("_", " ").toLowerCase();
+}
+
+function impactLabel(impact: string) {
+  return impact === "SUPPORTS" ? "SOUTIENT" : impact === "BLOCKS" ? "BLOQUE" : impact === "REDUCES" ? "RÉDUIT" : "NEUTRE";
+}
+
+function impactTone(impact: string) {
+  return impact === "SUPPORTS" ? "text-[#30d158]" : impact === "BLOCKS" ? "text-[#ff6961]" : impact === "REDUCES" ? "text-[#ff9f0a]" : "text-white/30";
+}
+
+function formatEvidence(value: unknown) {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(3);
+  return String(value);
 }
 
 function Conviction({ value, color }: { value: number; color: string }) {

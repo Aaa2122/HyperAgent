@@ -20,6 +20,7 @@ from agent.hyperliquid_execution import (
     HyperliquidExecutionService,
     HyperliquidReadiness,
 )
+from agent.instruments import Hip3InstrumentRegistry
 from agent.market import PaperMarketData
 from agent.repository import Repository
 from agent.research import GrokXResearchProvider, NeutralResearchProvider
@@ -44,6 +45,8 @@ class AgentService:
         self._analytics_cache: tuple[float, dict] | None = None
         self._trade_history_cache: tuple[float, dict] | None = None
         self._trade_history_client: HyperliquidInfoClient | None = None
+        self._instrument_registry_cache: tuple[float, dict] | None = None
+        self._instrument_registry_client: HyperliquidInfoClient | None = None
         self._last_llm_cycle_at = 0.0
         self._last_llm_marks: dict[str, float] = {}
         self._material_event_pending = False
@@ -686,6 +689,36 @@ class AgentService:
     def trade_metrics(self, *, fresh: bool = False) -> dict:
         history = self.trade_history(fresh=fresh)
         return calculate_trade_metrics(history["trades"]).model_dump(mode="json")
+
+    def instrument_registry(self, *, fresh: bool = False) -> dict:
+        """Expose HIP-3 US markets as read-only discovery data.
+
+        Discovery never changes the execution universe.  The registry itself
+        hard-codes ``live_eligible=False`` so a visible ticker cannot become an
+        executable LIVE asset by accident.
+        """
+
+        now_mono = time.monotonic()
+        if (
+            not fresh
+            and self._instrument_registry_cache
+            and now_mono - self._instrument_registry_cache[0] < 60
+        ):
+            return self._instrument_registry_cache[1]
+
+        if isinstance(self.market, HyperliquidMarketData):
+            client = self.market.client
+        else:
+            if self._instrument_registry_client is None:
+                self._instrument_registry_client = HyperliquidInfoClient(
+                    self.settings.hyperliquid_api_url,
+                    timeout_seconds=self.settings.hyperliquid_timeout_seconds,
+                )
+            client = self._instrument_registry_client
+
+        payload = Hip3InstrumentRegistry(client).discover().to_dict()
+        self._instrument_registry_cache = (now_mono, payload)
+        return payload
 
     def performance(self) -> dict:
         if not isinstance(self.market, HyperliquidMarketData):

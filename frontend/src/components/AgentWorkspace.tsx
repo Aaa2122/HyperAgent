@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { BrainCircuit, ScrollText, Search } from "lucide-react";
+import { BrainCircuit, ExternalLink, ScrollText, Search } from "lucide-react";
 import { AgentControlDeck } from "@/components/AgentControlDeck";
 import { DecisionPipeline } from "@/components/DecisionPipeline";
 import { GrokIntelligenceMap } from "@/components/GrokIntelligenceMap";
-import type { DashboardData } from "@/types";
+import { Hip3MarketsPanel } from "@/components/Hip3MarketsPanel";
+import type { DashboardData, InstrumentRegistryData } from "@/types";
 
 const usd = new Intl.NumberFormat("fr-FR", {
   style: "currency",
@@ -24,9 +25,11 @@ const sections = [
 export function AgentWorkspace({
   data,
   latest,
+  instrumentRegistry,
 }: {
   data: DashboardData | null;
   latest: Cycle | undefined;
+  instrumentRegistry: InstrumentRegistryData | null;
 }) {
   const [section, setSection] = useState<AgentSection>("convictions");
 
@@ -86,7 +89,13 @@ export function AgentWorkspace({
             <DecisionPipeline decision={latest?.state.decision} />
           </div>
         )}
-        {section === "research" && <ResearchPanel data={data} latest={latest} />}
+        {section === "research" && (
+          <ResearchPanel
+            data={data}
+            latest={latest}
+            instrumentRegistry={instrumentRegistry}
+          />
+        )}
         {section === "activity" && <ActivityPanel data={data} />}
       </section>
     </>
@@ -96,9 +105,11 @@ export function AgentWorkspace({
 function ResearchPanel({
   data,
   latest,
+  instrumentRegistry,
 }: {
   data: DashboardData | null;
   latest: Cycle | undefined;
+  instrumentRegistry: InstrumentRegistryData | null;
 }) {
   const signals = latest?.state.research?.signals ?? [];
   return (
@@ -155,6 +166,28 @@ function ResearchPanel({
                 <p className="mt-3 max-w-2xl text-xs leading-relaxed text-white/45">
                   {signal.summary || "Aucune justification fournie."}
                 </p>
+                <div className="mt-3 grid grid-cols-3 gap-4 text-[9px] text-white/25">
+                  <SignalMeter label="Confiance" value={signal.confidence} tone="#64d2ff" />
+                  <SignalMeter label="Nouveauté" value={signal.novelty} tone="#bf5af2" />
+                  <SignalMeter label="Manipulation" value={signal.manipulation_risk} tone="#ff9f0a" />
+                </div>
+                {signal.source_urls.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+                    {signal.source_urls.map((source, index) => (
+                      <a
+                        key={source}
+                        href={source}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-[10px] text-[#64d2ff]/70 transition hover:text-[#64d2ff]"
+                      >
+                        Source {index + 1}<ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-[9px] text-[#ff9f0a]/60">Aucune source externe vérifiée pour ce signal.</p>
+                )}
               </details>
             ))
           ) : (
@@ -162,6 +195,17 @@ function ResearchPanel({
           )}
         </div>
       </div>
+      <Hip3MarketsPanel registry={instrumentRegistry} />
+    </div>
+  );
+}
+
+function SignalMeter({ label, value, tone }: { label: string; value: number; tone: string }) {
+  const width = `${Math.max(0, Math.min(100, value * 100))}%`;
+  return (
+    <div>
+      <div className="flex justify-between gap-2"><span>{label}</span><span className="font-mono">{Math.round(value * 100)}%</span></div>
+      <div className="mt-1 h-px bg-white/[.06]"><div className="h-px transition-all duration-700" style={{ width, backgroundColor: tone }} /></div>
     </div>
   );
 }

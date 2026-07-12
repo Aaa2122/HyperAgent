@@ -12,6 +12,21 @@ export type MarketAsset = {
   spread_bps?: number;
 };
 
+export type StructuredDecisionReason = {
+  code: string;
+  message: string;
+  impact: "SUPPORTS" | "REDUCES" | "BLOCKS" | "NEUTRAL";
+  evidence: Record<string, unknown>;
+};
+
+export type ConvictionDiagnostic = {
+  symbol: string;
+  conviction: number;
+  level: "LOW" | "MODERATE" | "HIGH";
+  actionable: boolean;
+  reasons: StructuredDecisionReason[];
+};
+
 export type Cycle = {
   cycle_id: string;
   mode: string;
@@ -53,8 +68,15 @@ export type Cycle = {
       score: number;
       rationale: string;
     }>;
+    decision_provenance?: "GROK" | "CACHE" | "RULE_FALLBACK" | "SAFE_HOLD";
+    decision_status?: "NOMINAL" | "DEGRADED";
+    health_status?: "NOMINAL" | "DEGRADED";
     decision?: {
       provider: string;
+      provenance?: "GROK" | "CACHE" | "RULE_FALLBACK" | "SAFE_HOLD";
+      status?: "NOMINAL" | "DEGRADED";
+      reasons?: StructuredDecisionReason[];
+      conviction_diagnostics?: ConvictionDiagnostic[];
       playbook: {
         payload: {
           regime_view: string;
@@ -263,6 +285,89 @@ export type LlmCall = {
   response: Record<string, unknown>;
   skipped_reason?: string;
   created_at: string;
+};
+
+export type ClosedTrade = {
+  trade_id: string;
+  symbol: string;
+  side: "LONG" | "SHORT";
+  opened_at: string;
+  closed_at: string;
+  avg_entry_px: number;
+  avg_exit_px: number;
+  initial_size: number;
+  initial_notional_usd: number;
+  leverage: number;
+  gross_pnl_usd: number;
+  fees_usd: number;
+  funding_usd: number;
+  funding_source?: string;
+  net_pnl_usd: number;
+  price_return_pct: number;
+  margin_return_pct: number;
+  close_reason: string;
+  outcome: "PROFIT" | "LOSS" | "BREAK_EVEN";
+  thesis?: string | null;
+  rationale?: string | null;
+  source?: string | null;
+};
+
+export type TradeHistoryData = {
+  trades: ClosedTrade[];
+  total: number;
+  as_of: string | null;
+};
+
+export type TradeMetrics = {
+  total_trades: number;
+  win_rate_pct: number;
+  avg_win_usd: number;
+  avg_loss_usd: number;
+  profit_factor: number | null;
+  cumulative_net_pnl_usd: number;
+  max_drawdown_usd: number;
+  max_drawdown_pct: number;
+};
+
+export type InstrumentRegistryData = {
+  as_of: string;
+  execution_scope: "read_only_paper";
+  venue: {
+    name: string;
+    status: string;
+    status_reason: string;
+    full_name?: string | null;
+  };
+  session: {
+    status: "pre_market" | "regular" | "after_hours" | "closed";
+    as_of: string;
+    local_time: string;
+    timezone: string;
+    reason: string;
+  };
+  instruments: Array<{
+    instrument_id: string;
+    symbol: string;
+    venue_symbol: string;
+    venue: string;
+    asset_class: string;
+    kind: string;
+    execution_scope: "read_only_paper";
+    read_only: true;
+    paper_eligible: boolean;
+    live_eligible: false;
+    venue_status: string;
+    venue_status_reason: string;
+    session_status: string;
+    session_timezone: string;
+    mark_px?: number | null;
+    mid_px?: number | null;
+    day_notional_volume_usd?: number | null;
+    open_interest?: number | null;
+    funding_rate?: number | null;
+    max_leverage?: number | null;
+  }>;
+  warnings: string[];
 };
 
 export type TargetAnalytics = {
