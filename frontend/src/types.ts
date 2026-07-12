@@ -10,6 +10,7 @@ export type MarketAsset = {
   rv_24h_ann_pct?: number;
   oi_usd?: number;
   spread_bps?: number;
+  advisors?: Array<{ strategy_id: string; direction: string; conviction: number }>;
 };
 
 export type StructuredDecisionReason = {
@@ -81,6 +82,7 @@ export type Cycle = {
         payload: {
           regime_view: string;
           changes_vs_previous: string;
+          ttl_hours: number;
           plans?: Array<{
             symbol: string;
             bias: "LONG" | "SHORT" | "FLAT";
@@ -112,6 +114,13 @@ export type AgentDecision = {
   leverage: number;
   notional_usd?: number;
   horizon_hours?: number;
+  order_type?: "MARKET" | "LIMIT";
+  limit_px?: number | null;
+  exit_management?: "DYNAMIC" | "FIXED" | "HYBRID" | "TRAILING" | "TIME_STOP";
+  place_stop_order?: boolean;
+  take_profit_fractions?: number[];
+  trailing_stop_pct?: number | null;
+  time_stop_hours?: number | null;
   rationale: string;
 };
 export type DecisionConsequences = {
@@ -361,6 +370,7 @@ export type ClosedTrade = {
   price_return_pct: number;
   margin_return_pct: number;
   close_reason: string;
+  decision_author: "GROK" | "AUTOMATIC_RULE" | "USER" | "BROKER" | "EXCHANGE";
   outcome: "PROFIT" | "LOSS" | "BREAK_EVEN";
   thesis?: string | null;
   rationale?: string | null;

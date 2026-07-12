@@ -13,11 +13,12 @@ const usd = new Intl.NumberFormat("fr-FR", {
 });
 const number = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
 
-type AgentSection = "convictions" | "research" | "activity";
+type AgentSection = "convictions" | "strategist" | "research" | "activity";
 type Cycle = DashboardData["cycles"][number];
 
 const sections = [
   { id: "convictions" as const, label: "Convictions", icon: BrainCircuit },
+  { id: "strategist" as const, label: "Stratège", icon: BrainCircuit },
   { id: "research" as const, label: "Recherche", icon: Search },
   { id: "activity" as const, label: "Activité", icon: ScrollText },
 ];
@@ -99,6 +100,7 @@ export function AgentWorkspace({
             <DecisionPipeline decision={latest?.state.decision} />
           </div>
         )}
+        {section === "strategist" && <StrategistPanel latest={latest} />}
         {section === "research" && (
           <ResearchPanel
             data={data}
@@ -109,6 +111,30 @@ export function AgentWorkspace({
         {section === "activity" && <ActivityPanel data={data} />}
       </section>
     </>
+  );
+}
+
+function StrategistPanel({ latest }: { latest: Cycle | undefined }) {
+  const payload = latest?.state.decision?.playbook?.payload;
+  const assets = latest?.state.market_snapshot?.assets ?? [];
+  if (!payload) return <p className="py-16 text-center text-sm text-muted-foreground">Aucun playbook stratégique disponible.</p>;
+  return (
+    <div className="mx-auto max-w-6xl">
+      <div className="grid gap-8 border-b border-border pb-7 lg:grid-cols-[1.3fr_.7fr]">
+        <div><p className="eyebrow">Régime de marché</p><h2 className="mt-2 text-2xl font-semibold tracking-[-.03em]">Lecture du stratège</h2><p className="mt-4 max-w-3xl text-sm leading-relaxed text-foreground/65">{payload.regime_view}</p></div>
+        <div className="lg:border-l lg:border-border lg:pl-8"><p className="eyebrow">Évolution du plan</p><p className="mt-3 text-xs leading-relaxed text-muted-foreground">{payload.changes_vs_previous}</p><p className="mt-4 font-mono text-[10px] text-muted-foreground">Horizon du playbook · {payload.ttl_hours} h</p></div>
+      </div>
+      <div className="mt-7 grid gap-x-8 md:grid-cols-2">
+        {(payload.plans ?? []).map((plan) => {
+          const asset = assets.find((item) => item.symbol === plan.symbol);
+          return <details key={plan.symbol} open={plan.bias !== "FLAT"} className="border-t border-border py-4">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4"><strong>{plan.symbol}</strong><span className={`font-mono text-xs ${plan.bias === "LONG" ? "text-profit" : plan.bias === "SHORT" ? "text-loss" : "text-muted-foreground"}`}>{plan.bias} · {(plan.conviction * 100).toFixed(0)}%</span></summary>
+            <p className="mt-4 text-xs leading-relaxed text-foreground/60">{plan.thesis}</p>
+            <div className="mt-4 grid grid-cols-3 gap-4 text-[10px] text-muted-foreground"><span>Risque relatif<br/><b className="font-mono text-foreground/80">{(plan.risk_alloc * 100).toFixed(0)}%</b></span><span>ADX 4h<br/><b className="font-mono text-foreground/80">{asset?.adx_4h?.toFixed(1) ?? "—"}</b></span><span>Signaux naïfs<br/><b className="font-mono text-foreground/80">{asset?.advisors?.map((a) => `${a.strategy_id}:${a.direction}`).join(" · ") || "—"}</b></span></div>
+          </details>;
+        })}
+      </div>
+    </div>
   );
 }
 
