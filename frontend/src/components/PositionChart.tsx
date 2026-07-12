@@ -12,6 +12,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { Maximize2, RotateCcw } from "lucide-react";
+import { useSemanticColors } from "@/lib/theme";
 import type { TargetAnalytics } from "@/types";
 
 const price = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 4 });
@@ -56,6 +57,7 @@ export function PositionChart({
   mark,
   side,
 }: Props) {
+  const colors = useSemanticColors();
   const host = useRef<HTMLDivElement>(null);
   const chartApi = useRef<IChartApi | null>(null);
   const savedTimeRange =
@@ -84,44 +86,44 @@ export function PositionChart({
       width: container.clientWidth,
       height: 500,
       layout: {
-        background: { type: ColorType.Solid, color: "#0a0a0d" },
-        textColor: "rgba(255,255,255,.42)",
+        background: { type: ColorType.Solid, color: colors.background },
+        textColor: colors.mutedForeground,
         fontFamily: "-apple-system, BlinkMacSystemFont, Inter, sans-serif",
         fontSize: 11,
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,.035)" },
-        horzLines: { color: "rgba(255,255,255,.045)" },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: "rgba(255,255,255,.32)",
+          color: colors.crosshair,
           width: 1,
           style: LineStyle.Dashed,
-          labelBackgroundColor: "#29292f",
+          labelBackgroundColor: colors.chartLabel,
         },
         horzLine: {
-          color: "rgba(255,255,255,.32)",
+          color: colors.crosshair,
           width: 1,
           style: LineStyle.Dashed,
-          labelBackgroundColor: "#29292f",
+          labelBackgroundColor: colors.chartLabel,
         },
       },
       leftPriceScale: {
         visible: true,
-        borderColor: "rgba(255,255,255,.09)",
+        borderColor: colors.border,
         scaleMargins: { top: 0.08, bottom: 0.28 },
         entireTextOnly: true,
       },
       rightPriceScale: {
         visible: true,
-        borderColor: "rgba(255,255,255,.09)",
+        borderColor: colors.border,
         scaleMargins: { top: 0.78, bottom: 0.02 },
         entireTextOnly: true,
       },
       timeScale: {
-        borderColor: "rgba(255,255,255,.09)",
+        borderColor: colors.border,
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 5,
@@ -150,12 +152,12 @@ export function PositionChart({
     chartApi.current = chart;
     const candles = chart.addSeries(CandlestickSeries, {
       priceScaleId: "left",
-      upColor: "#30d158",
-      downColor: "#ff453a",
-      borderUpColor: "#30d158",
-      borderDownColor: "#ff453a",
-      wickUpColor: "rgba(48,209,88,.72)",
-      wickDownColor: "rgba(255,69,58,.72)",
+      upColor: colors.profit,
+      downColor: colors.loss,
+      borderUpColor: colors.profit,
+      borderDownColor: colors.loss,
+      wickUpColor: colors.profit,
+      wickDownColor: colors.loss,
       priceLineVisible: true,
       lastValueVisible: true,
       priceFormat: {
@@ -188,7 +190,7 @@ export function PositionChart({
       return {
         time: Math.floor(item.time / 1000) as UTCTimestamp,
         value: item.volume ?? 0,
-        color: close >= open ? "rgba(48,209,88,.34)" : "rgba(255,69,58,.34)",
+        color: close >= open ? colors.profitSoft : colors.lossSoft,
       };
     });
     candles.setData(candleData);
@@ -247,7 +249,7 @@ export function PositionChart({
       });
     candles.createPriceLine({
       price: entry,
-      color: "rgba(255,255,255,.8)",
+      color: colors.foregroundStrong,
       lineWidth: 1,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -255,7 +257,7 @@ export function PositionChart({
     });
     candles.createPriceLine({
       price: stop,
-      color: "#ff453a",
+      color: colors.loss,
       lineWidth: 2,
       lineStyle: LineStyle.Dashed,
       axisLabelVisible: true,
@@ -265,7 +267,7 @@ export function PositionChart({
       const hit = target.status === "ACHIEVED";
       candles.createPriceLine({
         price: target.price,
-        color: hit ? "rgba(48,209,88,.45)" : "#30d158",
+        color: hit ? colors.profitFaint : colors.profit,
         lineWidth: hit ? 2 : 1,
         lineStyle: hit ? LineStyle.Solid : LineStyle.Dashed,
         axisLabelVisible: true,
@@ -290,7 +292,7 @@ export function PositionChart({
           time: nearest.time,
           position:
             side === "LONG" ? ("aboveBar" as const) : ("belowBar" as const),
-          color: "#30d158",
+          color: colors.profit,
           shape: "arrowDown" as const,
           text: `TP${target.level} ✓ +${target.realized_pnl_usd.toFixed(2)} $`,
         };
@@ -298,7 +300,7 @@ export function PositionChart({
     if (hitMarkers.length) createSeriesMarkers(candles, hitMarkers);
     candles.createPriceLine({
       price: mark,
-      color: "#64d2ff",
+      color: colors.info,
       lineWidth: 1,
       lineStyle: LineStyle.Solid,
       axisLabelVisible: true,
@@ -339,7 +341,7 @@ export function PositionChart({
       chart.remove();
       chartApi.current = null;
     };
-  }, [points, entry, stop, targets, mark, side]);
+  }, [points, entry, stop, targets, mark, side, colors]);
 
   function selectWindow(id: WindowId) {
     setWindowId(id);
@@ -365,35 +367,35 @@ export function PositionChart({
     : 0;
   if (!points.length)
     return (
-      <div className="grid h-[500px] place-items-center rounded-2xl border border-dashed border-white/10 text-xs text-white/25">
+      <div className="grid h-[500px] place-items-center rounded-2xl border border-dashed border-border text-xs text-muted-foreground">
         Le graphique OHLCV apparaîtra à la prochaine position.
       </div>
     );
   return (
-    <div className="my-5 overflow-hidden rounded-[22px] border border-white/[.08] bg-[#0a0a0d] shadow-[0_24px_70px_rgba(0,0,0,.3)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[.06] px-4 py-3 sm:px-5">
+    <div className="my-5 overflow-hidden rounded-[22px] border border-border bg-background shadow-[0_24px_70px_rgba(0,0,0,.14)]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
         <div className="flex flex-wrap items-center gap-3">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#64d2ff] opacity-40" />
-            <span className="relative h-2 w-2 rounded-full bg-[#64d2ff]" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-info opacity-40" />
+            <span className="relative h-2 w-2 rounded-full bg-info" />
           </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[.15em] text-white/45">
+          <span className="text-[10px] font-semibold uppercase tracking-[.15em] text-muted-foreground">
             Marché live
           </span>
-          <span className="hidden font-mono text-[10px] text-white/30 sm:inline">
-            O <b className="text-white/65">{price.format(legend.open)}</b> H{" "}
-            <b className="text-[#30d158]">{price.format(legend.high)}</b> L{" "}
-            <b className="text-[#ff6961]">{price.format(legend.low)}</b> C{" "}
-            <b className="text-white/75">{price.format(legend.close)}</b> Vol{" "}
-            <b className="text-white/55">{volume.format(legend.volume)}</b>
+          <span className="hidden font-mono text-[10px] text-muted-foreground sm:inline">
+            O <b className="text-foreground/65">{price.format(legend.open)}</b> H{" "}
+            <b className="text-profit">{price.format(legend.high)}</b> L{" "}
+            <b className="text-loss">{price.format(legend.low)}</b> C{" "}
+            <b className="text-foreground/75">{price.format(legend.close)}</b> Vol{" "}
+            <b className="text-muted-foreground">{volume.format(legend.volume)}</b>
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-full bg-white/[.06] px-2.5 py-1 font-mono text-[10px] text-white/55">
+          <span className="rounded-full bg-muted/60 px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
             {price.format(mark)}
           </span>
           <span
-            className={`rounded-full px-2.5 py-1 font-mono text-[10px] ${pnlPct >= 0 ? "bg-[#30d158]/10 text-[#30d158]" : "bg-[#ff453a]/10 text-[#ff6961]"}`}
+            className={`rounded-full px-2.5 py-1 font-mono text-[10px] ${pnlPct >= 0 ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss"}`}
           >
             {pnlPct >= 0 ? "+" : ""}
             {pnlPct.toFixed(2)}%
@@ -402,7 +404,7 @@ export function PositionChart({
             title="Ajuster tout le contenu"
             aria-label="Ajuster tout le contenu"
             onClick={() => chartApi.current?.timeScale().fitContent()}
-            className="grid h-7 w-7 place-items-center rounded-lg bg-white/[.05] text-white/35 hover:bg-white/10 hover:text-white"
+            className="icon-button grid h-11 w-11 place-items-center rounded-lg bg-muted/55 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           >
             <Maximize2 className="h-3 w-3" />
           </button>
@@ -419,15 +421,15 @@ export function PositionChart({
               chartApi.current?.timeScale().resetTimeScale();
               setWindowId("TOUT");
             }}
-            className="grid h-7 w-7 place-items-center rounded-lg bg-white/[.05] text-white/35 hover:bg-white/10 hover:text-white"
+            className="icon-button grid h-11 w-11 place-items-center rounded-lg bg-muted/55 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           >
             <RotateCcw className="h-3 w-3" />
           </button>
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/[.05] bg-white/[.012] px-4 py-2 sm:px-5">
-        <LevelChip label="ENTRÉE" value={entry} color="white" />
-        <LevelChip label="SL" value={stop} color="#ff453a" />
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-4 py-2 sm:px-5">
+        <LevelChip label="ENTRÉE" value={entry} color={colors.foregroundStrong} />
+        <LevelChip label="SL" value={stop} color={colors.loss} />
         {targets.map((item, index) => {
           const target = typeof item === "number"
             ? { level: index + 1, price: item, status: "ACTIVE" }
@@ -436,28 +438,30 @@ export function PositionChart({
             key={target.level}
             label={`TP${target.level}${target.status === "ACHIEVED" ? " ✓" : ""}`}
             value={target.price}
-            color={target.status === "ACHIEVED" ? "rgba(48,209,88,.55)" : "#30d158"}
+            color={target.status === "ACHIEVED" ? colors.profitFaint : colors.profit}
           />;
         })}
       </div>
       <div
         ref={host}
         className="h-[500px] w-full cursor-crosshair"
+        role="img"
         aria-label={`Graphique professionnel ${side}, prix à gauche, volume à droite`}
       />
-      <div className="flex items-center justify-between gap-4 border-t border-white/[.06] px-4 py-2.5 sm:px-5">
+      <div className="flex items-center justify-between gap-4 border-t border-border px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-1">
           {windows.map((item) => (
             <button
               key={item.id}
               onClick={() => selectWindow(item.id)}
-              className={`rounded-lg px-3 py-1.5 text-[9px] transition ${windowId === item.id ? "bg-white text-black" : "text-white/30 hover:bg-white/[.06] hover:text-white/70"}`}
+              aria-pressed={windowId === item.id}
+              className={`min-h-11 rounded-lg px-3 py-1.5 text-[9px] transition ${windowId === item.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
             >
               {item.label}
             </button>
           ))}
         </div>
-        <p className="hidden text-[9px] text-white/20 lg:block">
+        <p className="hidden text-[9px] text-muted-foreground/70 lg:block">
           Tes zooms et échelles sont conservés pendant les mises à jour ·
           Double-clic pour réinitialiser
         </p>
@@ -476,7 +480,7 @@ function LevelChip({
   color: string;
 }) {
   return (
-    <span className="flex items-center gap-1.5 rounded-lg border border-white/[.06] bg-white/[.025] px-2 py-1 font-mono text-[9px] text-white/45">
+    <span className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 px-2 py-1 font-mono text-[9px] text-muted-foreground">
       <span
         className="h-1.5 w-1.5 rounded-full"
         style={{ backgroundColor: color }}

@@ -149,6 +149,77 @@ export type RiskReview = {
   adjusted_decision?: AgentDecision | null;
 };
 
+export type ActivationMode = "always" | "us_equities" | "crypto_sessions" | "hybrid";
+
+export type UsEquitiesSession =
+  | "premarket"
+  | "market_open"
+  | "first_hours"
+  | "before_close"
+  | "after_hours";
+
+export type CryptoSession = "asia" | "europe" | "us" | "europe_us_overlap";
+
+export type ActivationState = "ACTIVE" | "WAITING" | "BLOCKED";
+
+export type ActivationConfig = {
+  mode: ActivationMode;
+  timezone: string;
+  us_equities_sessions: UsEquitiesSession[];
+  crypto_sessions: CryptoSession[];
+  liquidity_filter: {
+    enabled: boolean;
+    min_24h_volume_usd: number;
+    min_open_interest_usd: number;
+    min_eligible_assets: number;
+  };
+};
+
+export type AutomationCyclePolicy = {
+  strategy?: string;
+  trigger?: string;
+  interval_seconds?: number;
+  [key: string]: unknown;
+};
+
+export type AutomationCommand = {
+  enabled?: boolean;
+  cycle_interval_seconds?: number;
+  risk_monitor_interval_seconds?: number;
+  activation_mode?: ActivationMode;
+  activation_timezone?: string;
+  us_equities_sessions?: UsEquitiesSession[];
+  crypto_sessions?: CryptoSession[];
+  liquidity_filter_enabled?: boolean;
+  liquidity_min_24h_volume_usd?: number;
+  liquidity_min_open_interest_usd?: number;
+  liquidity_min_eligible_assets?: number;
+};
+
+export type AutomationStatus = {
+  enabled: boolean;
+  running: boolean;
+  cycle_interval_seconds: number;
+  risk_monitor_interval_seconds: number;
+  last_cycle_started_at?: string | null;
+  last_cycle_finished_at?: string | null;
+  last_cycle_status: string | null;
+  last_cycle_duration_seconds?: number | null;
+  last_cycle_reason?: string | null;
+  next_cycle_at?: string | null;
+  server_time?: string;
+  phase?: string;
+  phase_started_at?: string | null;
+  phase_detail?: string | null;
+  last_risk_monitor_status: string | null;
+  activation_config: ActivationConfig;
+  activation_state: ActivationState;
+  activation_reason: string;
+  next_activation_window_at?: string | null;
+  next_activation_window_local?: string | null;
+  cycle_policy: AutomationCyclePolicy;
+};
+
 export type DashboardData = {
   mode: string;
   decision_provider: string;
@@ -216,23 +287,7 @@ export type DashboardData = {
     size_fraction: number;
     status: string;
   }>;
-  automation: {
-    enabled: boolean;
-    running: boolean;
-    cycle_interval_seconds: number;
-    risk_monitor_interval_seconds: number;
-    last_cycle_started_at?: string | null;
-    last_cycle_finished_at?: string | null;
-    last_cycle_status: string | null;
-    last_cycle_duration_seconds?: number | null;
-    last_cycle_reason?: string | null;
-    next_cycle_at?: string | null;
-    server_time?: string;
-    phase?: string;
-    phase_started_at?: string | null;
-    phase_detail?: string | null;
-    last_risk_monitor_status: string | null;
-  };
+  automation: AutomationStatus;
   events: Array<{
     event_id: number;
     event_type: string;

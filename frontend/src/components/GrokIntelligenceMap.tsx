@@ -48,10 +48,10 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
   if (!plan || !asset) return null;
   const tone =
     plan.bias === "LONG"
-      ? "#30d158"
+      ? "hsl(var(--profit))"
       : plan.bias === "SHORT"
-        ? "#ff6961"
-        : "#8e8e93";
+        ? "hsl(var(--loss))"
+        : "hsl(var(--muted-foreground))";
   const trend = Math.min(
     100,
     Math.round(
@@ -62,13 +62,13 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
   );
   const channel = Math.round((asset.donchian_pos_4h ?? 0.5) * 100);
   return (
-    <section className="mt-6 overflow-hidden border-y border-white/[.07] py-5">
+    <section className="mt-6 overflow-hidden border-y border-border py-5">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 ${decisionStatus === "DEGRADED" ? "bg-[#ff9f0a]" : "bg-[#bf5af2]"}`} />
-              <span className={`relative h-2 w-2 rounded-full ${decisionStatus === "DEGRADED" ? "bg-[#ff9f0a]" : "bg-[#bf5af2]"}`} />
+              <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-40 ${decisionStatus === "DEGRADED" ? "bg-warning" : "bg-insight"}`} />
+              <span className={`relative h-2 w-2 rounded-full ${decisionStatus === "DEGRADED" ? "bg-warning" : "bg-insight"}`} />
             </span>
             <p className="eyebrow">
               {isGrok ? "Grok Intelligence Map" : "Intelligence Map · fallback déterministe"}
@@ -77,13 +77,13 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
           <h2 className="mt-2 text-xl font-semibold tracking-[-.03em]">
             Lecture vivante du marché
           </h2>
-          <p className="mt-1 max-w-xl text-[11px] text-white/35">
+          <p className="mt-1 max-w-xl text-[11px] text-muted-foreground">
             Régime, conviction et décision reconstruits depuis la dernière
             analyse structurée · source {provider}.
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <span className={`rounded-full px-3 py-1 text-[9px] font-semibold tracking-[.08em] ${decisionStatus === "DEGRADED" ? "bg-[#ff9f0a]/10 text-[#ff9f0a]" : "bg-[#30d158]/10 text-[#30d158]"}`}>
+          <span className={`rounded-full px-3 py-1 text-[9px] font-semibold tracking-[.08em] ${decisionStatus === "DEGRADED" ? "bg-warning/10 text-warning" : "bg-profit/10 text-profit"}`}>
             {decisionStatus} · {provenance.replaceAll("_", " ")}
           </span>
           <div className="flex flex-wrap justify-end gap-1.5">
@@ -91,7 +91,8 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
               <button
                 key={item.symbol}
                 onClick={() => setSelected(item.symbol)}
-                className={`rounded-full px-3 py-1.5 text-[10px] transition duration-300 ${active === item.symbol ? "bg-white text-black shadow-[0_0_30px_rgba(255,255,255,.12)]" : "bg-white/[.04] text-white/35 hover:bg-white/[.08] hover:text-white/70"}`}
+                aria-pressed={active === item.symbol}
+                className={`min-h-11 rounded-full px-3 py-1.5 text-[10px] transition duration-300 ${active === item.symbol ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/50 text-muted-foreground hover:bg-accent hover:text-foreground"}`}
               >
                 {item.symbol}
                 <span className="ml-1.5 font-mono opacity-55">
@@ -106,7 +107,7 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
         <div className="flex items-center gap-5 lg:flex-col lg:items-start">
           <Conviction value={plan.conviction} color={tone} />
           <div>
-            <p className="text-[10px] text-white/25">Biais stratégique</p>
+            <p className="text-[10px] text-muted-foreground">Biais stratégique</p>
             <div
               className="mt-2 flex items-center gap-2"
               style={{ color: tone }}
@@ -120,23 +121,23 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
               )}
               <strong className="text-2xl">{plan.bias}</strong>
             </div>
-            <p className="mt-2 font-mono text-[10px] text-white/30">
+            <p className="mt-2 font-mono text-[10px] text-muted-foreground">
               Allocation {Math.round(plan.risk_alloc * 100)}%
             </p>
           </div>
         </div>
         <div className="relative min-h-[210px] overflow-hidden rounded-[22px] bg-[radial-gradient(circle_at_50%_45%,rgba(191,90,242,.10),transparent_58%)] px-5 py-4">
-          <div className="absolute inset-x-10 top-1/2 h-px bg-gradient-to-r from-transparent via-[#bf5af2]/40 to-transparent" />
+          <div className="absolute inset-x-10 top-1/2 h-px bg-gradient-to-r from-transparent via-insight/40 to-transparent" />
           <div className="relative grid h-full grid-cols-[1fr_auto_1fr] items-center gap-3">
             <Thought
               icon={Radio}
               label="Marché"
               value={`${asset.ret_4h_pct >= 0 ? "+" : ""}${asset.ret_4h_pct.toFixed(2)}% · 4h`}
-              color="#64d2ff"
+              color="hsl(var(--info))"
             />
-            <div className="relative grid h-20 w-20 place-items-center rounded-full border border-[#bf5af2]/35 bg-[#bf5af2]/10 shadow-[0_0_50px_rgba(191,90,242,.12)]">
-              <span className="absolute inset-2 animate-pulse rounded-full border border-[#bf5af2]/20" />
-              <BrainCircuit className="h-8 w-8 text-[#bf5af2]" />
+            <div className="relative grid h-20 w-20 place-items-center rounded-full border border-insight/35 bg-insight/10 shadow-[0_0_50px_rgba(191,90,242,.12)]">
+              <span className="absolute inset-2 animate-pulse rounded-full border border-insight/20" />
+              <BrainCircuit className="h-8 w-8 text-insight" />
             </div>
             <Thought
               icon={Sparkles}
@@ -146,8 +147,8 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
             />
           </div>
           <div className="relative mt-4 grid grid-cols-3 gap-5">
-            <Signal label="Force tendance" value={trend} color="#bf5af2" />
-            <Signal label="Canal Donchian" value={channel} color="#64d2ff" />
+            <Signal label="Force tendance" value={trend} color="hsl(var(--insight))" />
+            <Signal label="Canal Donchian" value={channel} color="hsl(var(--info))" />
             <Signal
               label="Confiance trader"
               value={Math.round((decision?.confidence ?? 0) * 100)}
@@ -172,39 +173,39 @@ export function GrokIntelligenceMap({ latest }: { latest?: Cycle }) {
             hint={`spread ${(asset.spread_bps ?? 0).toFixed(2)} bps`}
           />
           <div className="pt-2">
-            <p className="text-[9px] font-semibold uppercase tracking-[.16em] text-white/25">
+            <p className="text-[9px] font-semibold uppercase tracking-[.16em] text-muted-foreground">
               Thèse de Grok
             </p>
-            <p className="mt-2 text-[11px] leading-relaxed text-white/50">
+            <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
               {plan.thesis}
             </p>
           </div>
         </aside>
       </div>
       {diagnostic && (
-        <div className="mt-6 border-t border-white/[.06] pt-5">
+        <div className="mt-6 border-t border-border pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Gauge className="h-3.5 w-3.5 text-white/40" />
+              <Gauge className="h-3.5 w-3.5 text-muted-foreground" />
               <p className="eyebrow">Pourquoi {diagnostic.level.toLowerCase()} ?</p>
             </div>
-            <span className={`flex items-center gap-1.5 text-[10px] ${diagnostic.actionable ? "text-[#30d158]" : "text-[#ff9f0a]"}`}>
+            <span className={`flex items-center gap-1.5 text-[10px] ${diagnostic.actionable ? "text-profit" : "text-warning"}`}>
               {diagnostic.actionable ? <CircleCheck className="h-3 w-3" /> : <CircleX className="h-3 w-3" />}
               {diagnostic.actionable ? "Plan actionnable" : "Plan non actionnable"}
             </span>
           </div>
           <div className="mt-3 grid gap-x-8 sm:grid-cols-2">
             {diagnostic.reasons.map((reason) => (
-              <details key={`${diagnostic.symbol}-${reason.code}`} className="group border-b border-white/[.05] py-3">
+              <details key={`${diagnostic.symbol}-${reason.code}`} className="group border-b border-border py-3">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[11px]">
-                  <span className="text-white/60">{reasonTitle(reason.code)}</span>
+                  <span className="text-foreground/60">{reasonTitle(reason.code)}</span>
                   <span className={`text-[8px] font-semibold tracking-[.1em] ${impactTone(reason.impact)}`}>
                     {impactLabel(reason.impact)}
                   </span>
                 </summary>
-                <p className="mt-2 text-[10px] leading-relaxed text-white/35">{reason.message}</p>
+                <p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">{reason.message}</p>
                 {Object.keys(reason.evidence).length > 0 && (
-                  <p className="mt-2 font-mono text-[9px] text-white/25">
+                  <p className="mt-2 font-mono text-[9px] text-muted-foreground">
                     {Object.entries(reason.evidence).map(([key, value]) => `${key}: ${formatEvidence(value)}`).join(" · ")}
                   </p>
                 )}
@@ -240,7 +241,7 @@ function impactLabel(impact: string) {
 }
 
 function impactTone(impact: string) {
-  return impact === "SUPPORTS" ? "text-[#30d158]" : impact === "BLOCKS" ? "text-[#ff6961]" : impact === "REDUCES" ? "text-[#ff9f0a]" : "text-white/30";
+  return impact === "SUPPORTS" ? "text-profit" : impact === "BLOCKS" ? "text-loss" : impact === "REDUCES" ? "text-warning" : "text-muted-foreground";
 }
 
 function formatEvidence(value: unknown) {
@@ -255,13 +256,13 @@ function Conviction({ value, color }: { value: number; color: string }) {
     <div
       className="grid h-28 w-28 shrink-0 place-items-center rounded-full"
       style={{
-        background: `conic-gradient(${color} ${pct * 3.6}deg, rgba(255,255,255,.055) 0deg)`,
+        background: `conic-gradient(${color} ${pct * 3.6}deg, hsl(var(--border)) 0deg)`,
       }}
     >
-      <div className="grid h-[92px] w-[92px] place-items-center rounded-full bg-[#09090b]">
+      <div className="grid h-[92px] w-[92px] place-items-center rounded-full bg-background">
         <div className="text-center">
           <p className="font-mono text-2xl">{pct}</p>
-          <p className="text-[8px] uppercase tracking-[.14em] text-white/25">
+          <p className="text-[8px] uppercase tracking-[.14em] text-muted-foreground">
             conviction
           </p>
         </div>
@@ -283,10 +284,10 @@ function Thought({
   return (
     <div className="text-center">
       <Icon className="mx-auto h-4 w-4" style={{ color }} />
-      <p className="mt-2 text-[9px] uppercase tracking-[.15em] text-white/25">
+      <p className="mt-2 text-[9px] uppercase tracking-[.15em] text-muted-foreground">
         {label}
       </p>
-      <p className="mt-1 font-mono text-xs text-white/70">{value}</p>
+      <p className="mt-1 font-mono text-xs text-foreground/70">{value}</p>
     </div>
   );
 }
@@ -301,11 +302,11 @@ function Signal({
 }) {
   return (
     <div>
-      <div className="flex justify-between text-[9px] text-white/25">
+      <div className="flex justify-between text-[9px] text-muted-foreground">
         <span>{label}</span>
         <span className="font-mono">{value}</span>
       </div>
-      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[.05]">
+      <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-muted/55">
         <div
           className="h-full rounded-full transition-all duration-700"
           style={{
@@ -328,12 +329,12 @@ function Metric({
   hint: string;
 }) {
   return (
-    <div className="flex items-end justify-between border-b border-white/[.05] pb-2">
+    <div className="flex items-end justify-between border-b border-border pb-2">
       <div>
-        <p className="text-[9px] text-white/25">{label}</p>
-        <p className="mt-1 font-mono text-sm text-white/75">{value}</p>
+        <p className="text-[9px] text-muted-foreground">{label}</p>
+        <p className="mt-1 font-mono text-sm text-foreground/75">{value}</p>
       </div>
-      <span className="text-[9px] text-white/25">{hint}</span>
+      <span className="text-[9px] text-muted-foreground">{hint}</span>
     </div>
   );
 }

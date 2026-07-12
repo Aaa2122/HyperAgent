@@ -1,11 +1,26 @@
 <!doctype html>
-<html lang="fr" class="dark">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#070b0d" />
+    <meta name="theme-color" content="#f6f7f9" />
+    <meta name="color-scheme" content="light dark" />
     <meta name="description" content="Operations dashboard for the reliability-first trading agent" />
     <title>Agent Reliability Console</title>
+    <script>
+      (() => {
+        const key = "hyperagent-theme";
+        let preference = "auto";
+        try {
+          const stored = localStorage.getItem(key);
+          if (stored === "light" || stored === "dark" || stored === "auto") preference = stored;
+        } catch (_) {}
+        const dark = preference === "dark" || (preference === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+        document.documentElement.dataset.theme = preference;
+        document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#08080a" : "#f6f7f9");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

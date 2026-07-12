@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BrainCircuit,
@@ -7,23 +7,22 @@ import {
   ChevronRight,
   CircleDollarSign,
   History,
+  Monitor,
+  Moon,
   Pause,
   Play,
   RefreshCw,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Sun,
   TrendingDown,
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { PnlChart } from "@/components/PnlChart";
-import { PositionChart } from "@/components/PositionChart";
-import { PositionsPanel } from "@/components/PositionsPanel";
-import { AgentWorkspace } from "@/components/AgentWorkspace";
-import { TradeHistoryPanel } from "@/components/TradeHistoryPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ActivationSettings } from "@/components/ActivationSettings";
 import type {
   DashboardData,
   HyperliquidReadiness,
@@ -61,8 +60,33 @@ const views: Array<{ id: View; label: string; icon: typeof Activity }> = [
   { id: "history", label: "Historique", icon: History },
   { id: "settings", label: "Réglages", icon: Settings2 },
 ];
+type ThemePreference = "light" | "dark" | "auto";
+const themeStorageKey = "hyperagent-theme";
+const PnlChart = lazy(() =>
+  import("@/components/PnlChart").then((module) => ({ default: module.PnlChart })),
+);
+const PositionsPanel = lazy(() =>
+  import("@/components/PositionsPanel").then((module) => ({ default: module.PositionsPanel })),
+);
+const AgentWorkspace = lazy(() =>
+  import("@/components/AgentWorkspace").then((module) => ({ default: module.AgentWorkspace })),
+);
+const TradeHistoryPanel = lazy(() =>
+  import("@/components/TradeHistoryPanel").then((module) => ({ default: module.TradeHistoryPanel })),
+);
+
+function storedTheme(): ThemePreference {
+  try {
+    const value = localStorage.getItem(themeStorageKey);
+    if (value === "light" || value === "dark" || value === "auto") return value;
+  } catch {
+    // Storage can be unavailable in hardened browser contexts.
+  }
+  return "auto";
+}
 
 export default function App() {
+  const [theme, setTheme] = useState<ThemePreference>(storedTheme);
   const [data, setData] = useState<DashboardData | null>(null);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [analytics, setAnalytics] = useState<PositionAnalytics | null>(null);
@@ -84,6 +108,26 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const dark = theme === "dark" || (theme === "auto" && media.matches);
+      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.dataset.theme = theme;
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute("content", dark ? "#08080a" : "#f6f7f9");
+    };
+    applyTheme();
+    try {
+      localStorage.setItem(themeStorageKey, theme);
+    } catch {
+      // The selected theme still applies for the current session.
+    }
+    media.addEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", applyTheme);
+  }, [theme]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -292,19 +336,19 @@ export default function App() {
   }, [data?.automation]);
 
   return (
-    <div className="min-h-screen bg-[#08080a] text-white selection:bg-white/20">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_-10%,rgba(88,88,102,.2),transparent_34%),radial-gradient(circle_at_92%_0%,rgba(48,209,88,.07),transparent_26%)]" />
+    <div className="min-h-screen bg-background text-foreground selection:bg-foreground/20">
+      <div className="app-ambient pointer-events-none fixed inset-0" />
       <main className="relative mx-auto flex min-h-screen max-w-[1600px] flex-col px-4 py-4 sm:px-7 lg:px-10">
-        <header className="flex items-center justify-between rounded-[22px] border border-white/[.07] bg-white/[.035] px-4 py-3 backdrop-blur-2xl">
+        <header className="flex items-center justify-between rounded-[22px] border border-border bg-muted/45 px-4 py-3 backdrop-blur-2xl">
           <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-white text-black">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
               <Sparkles className="h-4 w-4" />
             </div>
             <div>
               <p className="text-[15px] font-semibold tracking-[-.02em]">
                 Hyperliquid Intelligence
               </p>
-              <p className="text-[10px] text-white/35">
+              <p className="text-[10px] text-muted-foreground">
                 Autonomous trading system
               </p>
             </div>
@@ -312,10 +356,10 @@ export default function App() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => setView("settings")}
-              className="hidden items-center gap-2 rounded-full bg-white/[.055] px-3 py-2 text-[11px] text-white/55 transition hover:bg-white/10 hover:text-white sm:flex"
+              className="hidden min-h-11 items-center gap-2 rounded-full bg-muted/55 px-3 py-2 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-accent-foreground sm:flex"
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${healthy ? "bg-[#30d158] shadow-[0_0_12px_#30d158]" : "bg-[#ff9f0a]"}`}
+                className={`h-1.5 w-1.5 rounded-full ${healthy ? "bg-profit shadow-[0_0_12px_#30d158]" : "bg-warning"}`}
               />
               {healthy ? "Mainnet opérationnel" : "Vérification requise"}
               <ChevronRight className="h-3 w-3" />
@@ -324,7 +368,7 @@ export default function App() {
               aria-label="Actualiser les données"
               variant="ghost"
               size="sm"
-              className="rounded-full text-white/55 hover:bg-white/10 hover:text-white"
+              className="icon-button rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               onClick={() => void refresh()}
             >
               <RefreshCw
@@ -336,7 +380,7 @@ export default function App() {
 
         <nav
           role="tablist"
-          className="my-4 flex gap-1 overflow-x-auto rounded-2xl border border-white/[.06] bg-white/[.025] p-1.5"
+          className="my-4 flex gap-1 overflow-x-auto rounded-2xl border border-border bg-muted/40 p-1.5"
           aria-label="Navigation principale"
         >
           {views.map(({ id, label, icon: Icon }, index) => (
@@ -345,15 +389,16 @@ export default function App() {
               id={`nav-${id}`}
               aria-controls={`panel-${id}`}
               aria-selected={view === id}
+              tabIndex={view === id ? 0 : -1}
               title={`Raccourci ${index + 1}`}
               key={id}
               onClick={() => setView(id)}
-              className={`nav-tab flex min-w-fit flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs ${view === id ? "active bg-white text-black shadow-lg" : "text-white/40 hover:bg-white/[.05] hover:text-white/75"}`}
+              className={`nav-tab flex min-h-11 min-w-fit flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs ${view === id ? "active bg-primary text-primary-foreground shadow-lg" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
             >
               <Icon className="h-3.5 w-3.5" />
               {label}
               <span
-                className={`hidden text-[9px] lg:inline ${view === id ? "text-black/35" : "text-white/15"}`}
+                className={`hidden text-[9px] lg:inline ${view === id ? "text-primary-foreground/70" : "text-muted-foreground/60"}`}
               >
                 {index + 1}
               </span>
@@ -363,7 +408,7 @@ export default function App() {
         {error && (
           <div
             role="alert"
-            className="mb-4 rounded-2xl border border-[#ff453a]/25 bg-[#ff453a]/10 px-4 py-3 text-sm text-[#ff6961]"
+            className="mb-4 rounded-2xl border border-loss/25 bg-loss/10 px-4 py-3 text-sm text-loss"
           >
             {error}
           </div>
@@ -371,7 +416,7 @@ export default function App() {
         {notice && (
           <div
             role="status"
-            className="toast-enter fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl border border-[#30d158]/20 bg-[#142419]/95 px-4 py-3 text-xs text-[#30d158] shadow-2xl backdrop-blur-xl"
+            className="toast-enter fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl border border-profit/30 bg-card/95 px-4 py-3 text-xs text-profit shadow-2xl backdrop-blur-xl"
           >
             <Check className="h-4 w-4" />
             {notice}
@@ -384,6 +429,7 @@ export default function App() {
           aria-labelledby={`nav-${view}`}
           className="workspace-panel panel-enter flex-1"
         >
+          <Suspense fallback={<WorkspaceFallback />}>
           {view === "overview" && (
             <Overview
               analytics={analytics}
@@ -423,8 +469,15 @@ export default function App() {
             <TradeHistoryPanel history={tradeHistory} metrics={tradeMetrics} />
           )}
           {view === "settings" && (
-            <SettingsPanel data={data} busy={busy} post={post} />
+            <SettingsPanel
+              data={data}
+              busy={busy}
+              post={post}
+              theme={theme}
+              setTheme={setTheme}
+            />
           )}
+          </Suspense>
         </section>
       </main>
     </div>
@@ -461,7 +514,7 @@ function Overview({
                 {usd.format(currentPnl)}
               </h1>
               <span
-                className={`mb-2 flex items-center text-sm ${positive ? "text-[#30d158]" : "text-[#ff453a]"}`}
+                className={`mb-2 flex items-center text-sm ${positive ? "text-profit" : "text-loss"}`}
               >
                 {positive ? (
                   <TrendingUp className="mr-1 h-4 w-4" />
@@ -474,12 +527,13 @@ function Overview({
               </span>
             </div>
           </div>
-          <div className="flex rounded-full bg-white/[.055] p-1">
+          <div className="flex rounded-full bg-muted/55 p-1" role="group" aria-label="Période du graphique P&L">
             {ranges.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setRange(item.id)}
-                className={`rounded-full px-4 py-1.5 text-[11px] ${range === item.id ? "bg-white text-black" : "text-white/40"}`}
+                aria-pressed={range === item.id}
+                className={`min-h-10 rounded-full px-4 py-1.5 text-[11px] ${range === item.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground"}`}
               >
                 {item.label}
               </button>
@@ -489,7 +543,7 @@ function Overview({
         <div className="min-h-0 flex-1">
           <PnlChart points={pnlRange?.pnl ?? []} positive={positive} />
         </div>
-        <div className="grid grid-cols-2 gap-x-7 gap-y-5 border-t border-white/[.06] pt-5 sm:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-x-7 gap-y-5 border-t border-border pt-5 sm:grid-cols-3 xl:grid-cols-6">
           <Metric
             label="P&L latent"
             value={usd.format(openPnl)}
@@ -521,7 +575,7 @@ function Overview({
           <Metric label="Exposition" value={usd.format(exposure)} />
         </div>
       </div>
-      <aside className="border-t border-white/[.06] pt-6 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
+      <aside className="border-t border-border pt-6 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0">
         <p className="eyebrow">État du système</p>
         <h2 className="mt-2 text-2xl font-semibold">Agent autonome</h2>
         <div className="mt-6 space-y-3">
@@ -565,7 +619,7 @@ function Overview({
         </div>
         <div className="mt-8">
           <p className="eyebrow">Marchés</p>
-          <div className="mt-3 divide-y divide-white/[.06]">
+          <div className="mt-3 divide-y divide-border">
             {assets.map((asset: any) => {
               const decision = decisions.find(
                 (item: any) => item.symbol === asset.symbol,
@@ -586,7 +640,7 @@ function Overview({
                 >
                   <div>
                     <p className="text-sm font-medium">{asset.symbol}</p>
-                    <p className="text-[10px] text-white/30">
+                    <p className="text-[10px] text-muted-foreground">
                       ADX {asset.adx_4h.toFixed(1)} · Funding{" "}
                       {asset.funding_1h_pct.toFixed(4)}%
                     </p>
@@ -596,11 +650,11 @@ function Overview({
                       <p className="font-mono text-sm">
                         {number.format(asset.mark_px)}
                       </p>
-                      <p className="text-[10px] text-white/35">
+                      <p className="text-[10px] text-muted-foreground">
                         {decision?.action ?? "—"}
                       </p>
                     </div>
-                    <ChevronRight className="h-3.5 w-3.5 text-white/0 transition group-hover:text-white/35" />
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/0 transition group-hover:text-muted-foreground" />
                   </div>
                 </button>
               );
@@ -608,127 +662,6 @@ function Overview({
           </div>
         </div>
       </aside>
-    </div>
-  );
-}
-
-function PositionsLegacy({
-  data,
-  analytics,
-}: {
-  data: DashboardData | null;
-  analytics: PositionAnalytics | null;
-}) {
-  const [selected, setSelected] = useState("");
-  useEffect(() => {
-    if (!selected && data?.positions[0]) setSelected(data.positions[0].symbol);
-  }, [data?.positions, selected]);
-  if (!data?.positions.length)
-    return (
-      <Empty
-        icon={CircleDollarSign}
-        title="Aucune position ouverte"
-        text="Les prochaines positions apparaîtront ici avec leur courbe et leurs distances techniques."
-      />
-    );
-  const activeSymbol = selected || data.positions[0].symbol;
-  const position =
-    data.positions.find((item) => item.symbol === activeSymbol) ??
-    data.positions[0];
-  const detail = analytics?.positions.find(
-    (item) => item.symbol === position.symbol,
-  );
-  const nextTarget = detail?.targets_analytics.find(
-    (item) => item.distance_pct > 0,
-  );
-  const pnl = position.unrealized_pnl_usd ?? 0;
-  return (
-    <div>
-      <PanelHeader
-        eyebrow="Portfolio"
-        title="Positions ouvertes"
-        subtitle="Sélectionne un actif pour concentrer toute l’analyse sur cette position."
-      />
-      <div className="mt-5 flex gap-2">
-        {data.positions.map((item) => (
-          <button
-            key={item.symbol}
-            onClick={() => setSelected(item.symbol)}
-            className={`rounded-full px-4 py-2 text-xs transition ${selected === item.symbol ? "bg-white text-black" : "bg-white/[.05] text-white/45 hover:bg-white/10 hover:text-white"}`}
-          >
-            {item.symbol}
-            <span
-              className={`ml-2 font-mono ${selected === item.symbol ? "text-black/45" : (item.unrealized_pnl_usd ?? 0) >= 0 ? "text-[#30d158]" : "text-[#ff453a]"}`}
-            >
-              {usd.format(item.unrealized_pnl_usd ?? 0)}
-            </span>
-          </button>
-        ))}
-      </div>
-      <article
-        key={position.symbol}
-        className="panel-enter mt-5 rounded-[24px] border border-white/[.07] bg-white/[.025] p-5 sm:p-7"
-      >
-        <div className="flex justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-3xl font-semibold">{position.symbol}</h3>
-              <Badge className="border-0 bg-white/10 text-white/60">
-                {position.side} · {position.leverage}×
-              </Badge>
-            </div>
-            <p className="mt-2 text-xs text-white/35">
-              Entrée {number.format(position.entry_px)} · Mark{" "}
-              {number.format(position.mark_px ?? 0)} · Notionnel{" "}
-              {usd.format(position.notional_usd)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p
-              className={`font-mono text-3xl ${pnl >= 0 ? "text-[#30d158]" : "text-[#ff453a]"}`}
-            >
-              {pnl >= 0 ? "+" : ""}
-              {usd.format(pnl)}
-            </p>
-            <p className="mt-1 text-[11px] text-white/35">
-              {(position.roe_pct ?? 0).toFixed(2)}% ROE ·{" "}
-              {detail?.unrealized_r.toFixed(2) ?? "—"}R
-            </p>
-          </div>
-        </div>
-        {detail && (
-          <PositionChart
-            points={detail.chart}
-            entry={position.entry_px}
-            stop={position.invalidation_px}
-            targets={detail.targets_analytics.map((item) => item.price)}
-            mark={position.mark_px ?? position.entry_px}
-            side={position.side}
-          />
-        )}
-        <div className="grid grid-cols-2 gap-4 border-t border-white/[.06] pt-5 sm:grid-cols-4">
-          <MetricCard
-            label="Distance au stop"
-            value={`${detail?.distance_to_stop_pct.toFixed(2) ?? "—"}%`}
-          />
-          <MetricCard
-            label="Prochain TP"
-            value={nextTarget ? `${nextTarget.distance_pct.toFixed(2)}%` : "—"}
-          />
-          <MetricCard
-            label="Progression objectif"
-            value={nextTarget ? `${nextTarget.progress_pct.toFixed(0)}%` : "—"}
-          />
-          <MetricCard
-            label="Distance liquidation"
-            value={
-              detail?.distance_to_liquidation_pct != null
-                ? `${detail.distance_to_liquidation_pct.toFixed(2)}%`
-                : "—"
-            }
-          />
-        </div>
-      </article>
     </div>
   );
 }
@@ -782,11 +715,11 @@ function Protections({
             (symbol) => (
               <div
                 key={symbol}
-                className="rounded-[22px] border border-white/[.07] bg-white/[.03] p-5"
+                className="rounded-[22px] border border-border bg-muted/45 p-5"
               >
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-semibold">{symbol}</h3>
-                  <Badge className="border-0 bg-[#30d158]/12 text-[#30d158]">
+                  <Badge className="border-0 bg-profit/10 text-profit">
                     Actifs
                   </Badge>
                 </div>
@@ -796,11 +729,11 @@ function Protections({
                     .map((item) => (
                       <div
                         key={item.protection_id}
-                        className="flex items-center justify-between rounded-xl bg-white/[.04] px-4 py-3"
+                        className="flex items-center justify-between rounded-xl bg-muted/50 px-4 py-3"
                       >
                         <div className="flex items-center gap-3">
                           <span
-                            className={`grid h-8 min-w-8 place-items-center rounded-full text-[10px] font-semibold ${item.kind === "SL" ? "bg-[#ff453a]/12 text-[#ff6961]" : "bg-[#30d158]/12 text-[#30d158]"}`}
+                            className={`grid h-8 min-w-8 place-items-center rounded-full text-[10px] font-semibold ${item.kind === "SL" ? "bg-loss/10 text-loss" : "bg-profit/10 text-profit"}`}
                           >
                             {item.kind}
                             {item.kind === "TP" ? item.level_index : ""}
@@ -811,7 +744,7 @@ function Protections({
                                 ? "Stop total"
                                 : `Objectif ${(item.size_fraction * 100).toFixed(0)}%`}
                             </p>
-                            <p className="text-[10px] text-white/30">
+                            <p className="text-[10px] text-muted-foreground">
                               {item.status}
                             </p>
                           </div>
@@ -833,12 +766,12 @@ function Protections({
             />
           )}
         </div>
-        <aside className="rounded-[22px] border border-white/[.07] bg-white/[.025] p-5">
+        <aside className="rounded-[22px] border border-border bg-muted/40 p-5">
           <p className="eyebrow">Moniteur de risque</p>
           <h3 className="mt-2 text-lg font-semibold">
             Déterministe · sans prompt
           </h3>
-          <p className="mt-2 text-xs leading-relaxed text-white/40">
+          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
             Réconciliation Hyperliquid toutes les{" "}
             {data?.automation?.risk_monitor_interval_seconds ?? 10} secondes.
             Les protections restent actives même si l’application est arrêtée.
@@ -857,7 +790,7 @@ function Protections({
                 actor: "dashboard",
               })
             }
-            className="mt-8 w-full rounded-xl border border-[#ff453a]/25 bg-[#ff453a]/[.07] px-4 py-3 text-xs font-medium text-[#ff6961] hover:bg-[#ff453a]/12"
+            className="mt-8 w-full rounded-xl border border-loss/25 bg-loss/10 px-4 py-3 text-xs font-medium text-loss hover:bg-loss/10"
           >
             Arrêt d’urgence
           </button>
@@ -871,11 +804,25 @@ function SettingsPanel({
   data,
   busy,
   post,
+  theme,
+  setTheme,
 }: {
   data: DashboardData | null;
   busy: boolean;
   post: (url: string, body?: object) => Promise<void>;
+  theme: ThemePreference;
+  setTheme: (theme: ThemePreference) => void;
 }) {
+  const themeChoices: Array<{
+    value: ThemePreference;
+    label: string;
+    description: string;
+    icon: typeof Sun;
+  }> = [
+    { value: "light", label: "Clair", description: "Contraste lumineux", icon: Sun },
+    { value: "dark", label: "Sombre", description: "Confort nocturne", icon: Moon },
+    { value: "auto", label: "Auto", description: "Suit le système", icon: Monitor },
+  ];
   return (
     <div>
       <PanelHeader
@@ -884,11 +831,38 @@ function SettingsPanel({
         subtitle="Automatisation, cadence et actions opérateur."
       />
       <div className="mt-8 mx-auto max-w-3xl">
-        <div className="rounded-[22px] border border-white/[.07] bg-white/[.03] p-6">
+        <div className="rounded-[22px] border border-border bg-card/65 p-6 shadow-sm">
+          <fieldset>
+            <legend className="text-lg font-semibold">Apparence</legend>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Le mode automatique suit les préférences de votre appareil.
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Thème de l’interface">
+              {themeChoices.map(({ value, label, description, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={theme === value}
+                  onClick={() => setTheme(value)}
+                  className="theme-swatch justify-start text-left"
+                >
+                  <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                  <span>
+                    <span className="block font-medium text-current">{label}</span>
+                    <span className={`block text-[10px] ${theme === value ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                      {description}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <div className="my-7 border-t border-border" />
           <div className="flex items-center justify-between">
             <div>
               <p className="text-lg font-semibold">Automatisation LIVE</p>
-              <p className="mt-1 text-xs text-white/35">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Cycles autonomes et moniteur déterministe
               </p>
             </div>
@@ -899,11 +873,13 @@ function SettingsPanel({
                   enabled: !data?.automation?.running,
                 })
               }
-              className={`relative h-7 w-12 rounded-full transition ${data?.automation?.running ? "bg-[#30d158]" : "bg-white/15"}`}
-              aria-label="Activer l’automatisation"
+              className={`relative h-11 w-16 rounded-full transition ${data?.automation?.running ? "bg-profit" : "bg-accent"}`}
+              role="switch"
+              aria-checked={Boolean(data?.automation?.running)}
+              aria-label={data?.automation?.running ? "Désactiver l’automatisation" : "Activer l’automatisation"}
             >
               <span
-                className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${data?.automation?.running ? "left-6" : "left-1"}`}
+                className={`absolute top-2 h-7 w-7 rounded-full bg-card shadow-sm transition ${data?.automation?.running ? "left-8" : "left-2"}`}
               />
             </button>
           </div>
@@ -939,7 +915,7 @@ function SettingsPanel({
             <Button
               disabled={busy || data?.kill_switch !== "RUNNING"}
               onClick={() => void post("/api/cycles/run")}
-              className="h-11 rounded-xl bg-white text-black hover:bg-white/90"
+              className="h-11 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Play className="h-3.5 w-3.5" />
               Analyser
@@ -954,7 +930,7 @@ function SettingsPanel({
                   actor: "dashboard",
                 })
               }
-              className="h-11 rounded-xl border-white/10 bg-white/[.03] text-white hover:bg-white/10"
+              className="h-11 rounded-xl border-border bg-muted/45 text-foreground hover:bg-accent"
             >
               <Pause className="h-3.5 w-3.5" />
               {data?.kill_switch === "RUNNING" ? "Pause" : "Reprendre"}
@@ -963,12 +939,19 @@ function SettingsPanel({
               disabled={busy}
               variant="outline"
               onClick={() => void post("/api/execution/reconcile")}
-              className="h-11 rounded-xl border-white/10 bg-white/[.03] text-white hover:bg-white/10"
+              className="h-11 rounded-xl border-border bg-muted/45 text-foreground hover:bg-accent"
             >
               <RefreshCw className="h-3.5 w-3.5" />
               Réconcilier
             </Button>
           </div>
+        </div>
+        <div className="mt-10">
+          <ActivationSettings
+            automation={data?.automation}
+            busy={busy}
+            post={post}
+          />
         </div>
       </div>
     </div>
@@ -985,13 +968,24 @@ function PanelHeader({
   subtitle: string;
 }) {
   return (
-    <div className="flex items-end justify-between gap-4 border-b border-white/[.06] pb-5">
+    <div className="flex items-end justify-between gap-4 border-b border-border pb-5">
       <div>
         <p className="eyebrow">{eyebrow}</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-.04em]">
           {title}
         </h1>
-        <p className="mt-1 text-xs text-white/35">{subtitle}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceFallback() {
+  return (
+    <div className="grid min-h-[420px] place-items-center" role="status" aria-live="polite">
+      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <RefreshCw aria-hidden="true" className="h-4 w-4 animate-spin" />
+        Chargement de la vue…
       </div>
     </div>
   );
@@ -1007,20 +1001,12 @@ function Metric({
 }) {
   return (
     <div>
-      <p className="text-[10px] text-white/35">{label}</p>
+      <p className="text-[10px] text-muted-foreground">{label}</p>
       <p
-        className={`mt-1.5 truncate font-mono text-sm font-medium ${tone === "positive" ? "text-[#30d158]" : tone === "negative" ? "text-[#ff453a]" : "text-white/90"}`}
+        className={`mt-1.5 truncate font-mono text-sm font-medium ${tone === "positive" ? "text-profit" : tone === "negative" ? "text-loss" : "text-foreground/90"}`}
       >
         {value}
       </p>
-    </div>
-  );
-}
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="hover-lift rounded-2xl border border-transparent bg-white/[.035] p-4 hover:border-white/[.07] hover:bg-white/[.055]">
-      <p className="text-[10px] text-white/35">{label}</p>
-      <p className="mt-2 font-mono text-lg">{value}</p>
     </div>
   );
 }
@@ -1034,10 +1020,10 @@ function InfoRow({
   good?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/[.035] px-4 py-3">
-      <span className="text-[11px] text-white/35">{label}</span>
+    <div className="flex items-center justify-between gap-4 rounded-xl bg-muted/45 px-4 py-3">
+      <span className="text-[11px] text-muted-foreground">{label}</span>
       <span
-        className={`max-w-[60%] truncate text-right text-xs font-medium ${good ? "text-[#30d158]" : "text-white/80"}`}
+        className={`max-w-[60%] truncate text-right text-xs font-medium ${good ? "text-profit" : "text-foreground/80"}`}
       >
         {value}
       </span>
@@ -1058,16 +1044,16 @@ function ActionRow({
   return (
     <button
       onClick={onClick}
-      className="group flex w-full items-center justify-between gap-4 rounded-xl bg-white/[.035] px-4 py-3 text-left transition hover:bg-white/[.075] active:scale-[.99]"
+      className="group flex w-full items-center justify-between gap-4 rounded-xl bg-muted/45 px-4 py-3 text-left transition hover:bg-accent active:scale-[.99]"
     >
-      <span className="text-[11px] text-white/35">{label}</span>
+      <span className="text-[11px] text-muted-foreground">{label}</span>
       <span className="flex min-w-0 items-center gap-2">
         <span
-          className={`truncate text-right text-xs font-medium ${good ? "text-[#30d158]" : "text-white/80"}`}
+          className={`truncate text-right text-xs font-medium ${good ? "text-profit" : "text-foreground/80"}`}
         >
           {value}
         </span>
-        <ChevronRight className="h-3.5 w-3.5 text-white/15 transition group-hover:translate-x-0.5 group-hover:text-white/50" />
+        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-foreground" />
       </span>
     </button>
   );
@@ -1085,13 +1071,13 @@ function Choice({
 }) {
   return (
     <div>
-      <p className="mb-2 text-[11px] text-white/40">{label}</p>
-      <div className="grid grid-cols-3 rounded-xl bg-white/[.045] p-1">
+      <p className="mb-2 text-[11px] text-muted-foreground">{label}</p>
+      <div className="grid grid-cols-3 rounded-xl bg-muted/50 p-1">
         {options.map(([text, option]) => (
           <button
             key={option}
             onClick={() => onChange(option)}
-            className={`rounded-lg py-2.5 text-[10px] transition ${value === option ? "bg-white/12 text-white" : "text-white/30 hover:text-white/60"}`}
+            className={`rounded-lg py-2.5 text-[10px] transition ${value === option ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"}`}
           >
             {text}
           </button>
@@ -1112,11 +1098,11 @@ function Empty({
   return (
     <div className="grid min-h-[520px] place-items-center text-center">
       <div>
-        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-white/[.05]">
-          <Icon className="h-6 w-6 text-white/30" />
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-muted/55">
+          <Icon className="h-6 w-6 text-muted-foreground" />
         </div>
         <h2 className="mt-4 text-lg font-semibold">{title}</h2>
-        <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-white/35">
+        <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
           {text}
         </p>
       </div>

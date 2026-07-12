@@ -18,6 +18,11 @@ export default {
         accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },
         destructive: { DEFAULT: "hsl(var(--destructive))", foreground: "hsl(var(--destructive-foreground))" },
         card: { DEFAULT: "hsl(var(--card))", foreground: "hsl(var(--card-foreground))" },
+        profit: { DEFAULT: "hsl(var(--profit))", foreground: "hsl(var(--profit-foreground))" },
+        loss: { DEFAULT: "hsl(var(--loss))", foreground: "hsl(var(--loss-foreground))" },
+        warning: { DEFAULT: "hsl(var(--warning))", foreground: "hsl(var(--warning-foreground))" },
+        info: { DEFAULT: "hsl(var(--info))", foreground: "hsl(var(--info-foreground))" },
+        insight: { DEFAULT: "hsl(var(--insight))", foreground: "hsl(var(--insight-foreground))" },
       },
       borderRadius: { lg: "var(--radius)", md: "calc(var(--radius) - 2px)", sm: "calc(var(--radius) - 4px)" },
       fontFamily: {

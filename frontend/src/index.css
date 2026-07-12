@@ -4,6 +4,43 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+    --background: 220 25% 97%;
+    --foreground: 224 27% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 27% 12%;
+    --primary: 224 24% 14%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 20% 93%;
+    --secondary-foreground: 224 22% 18%;
+    --muted: 220 18% 94%;
+    --muted-foreground: 220 10% 39%;
+    --accent: 218 20% 90%;
+    --accent-foreground: 224 24% 14%;
+    --destructive: 2 72% 47%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 14% 82%;
+    --input: 220 14% 80%;
+    --ring: 218 90% 48%;
+    --profit: 145 72% 30%;
+    --profit-foreground: 0 0% 100%;
+    --loss: 2 72% 47%;
+    --loss-foreground: 0 0% 100%;
+    --warning: 32 94% 35%;
+    --warning-foreground: 0 0% 100%;
+    --info: 204 86% 38%;
+    --info-foreground: 0 0% 100%;
+    --insight: 278 62% 47%;
+    --insight-foreground: 0 0% 100%;
+    --chart-grid: 220 16% 84%;
+    --chart-axis: 220 10% 42%;
+    --chart-crosshair: 220 10% 35%;
+    --chart-label: 224 20% 21%;
+    --radius: 1rem;
+  }
+
+  .dark {
+    color-scheme: dark;
     --background: 240 11% 4%;
     --foreground: 0 0% 98%;
     --card: 240 7% 8%;
@@ -13,15 +50,28 @@
     --secondary: 240 5% 12%;
     --secondary-foreground: 0 0% 94%;
     --muted: 240 5% 12%;
-    --muted-foreground: 240 4% 55%;
+    --muted-foreground: 240 4% 62%;
     --accent: 240 5% 15%;
     --accent-foreground: 0 0% 98%;
     --destructive: 3 100% 63%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
     --ring: 0 0% 88%;
-    --radius: 1rem;
+    --profit: 139 65% 50%;
+    --profit-foreground: 145 70% 8%;
+    --loss: 3 100% 64%;
+    --loss-foreground: 0 0% 100%;
+    --warning: 35 100% 52%;
+    --warning-foreground: 35 100% 8%;
+    --info: 197 100% 70%;
+    --info-foreground: 202 80% 9%;
+    --insight: 280 84% 70%;
+    --insight-foreground: 280 70% 9%;
+    --chart-grid: 240 4% 16%;
+    --chart-axis: 240 4% 62%;
+    --chart-crosshair: 240 4% 68%;
+    --chart-label: 240 5% 18%;
   }
 
   * { @apply border-border; }
@@ -32,25 +82,27 @@
     font-feature-settings: "ss01", "cv01";
   }
   button, a { -webkit-tap-highlight-color: transparent; }
-  button, a, summary { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[#08080a]; }
-  ::selection { background: rgba(255, 255, 255, .18); }
+  button, a, summary, input, select { @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background; }
+  button:not(:disabled), a, summary, select { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  ::selection { @apply bg-primary/20 text-foreground; }
 }
 
 @layer components {
   .glass-panel {
-    @apply rounded-[26px] border border-white/[.075] bg-white/[.035] shadow-[0_30px_80px_rgba(0,0,0,.24)] backdrop-blur-2xl;
+    @apply rounded-[26px] border border-border bg-card/70 shadow-[0_30px_80px_rgba(0,0,0,.12)] backdrop-blur-2xl;
   }
   .workspace-panel {
-    @apply min-h-[calc(100vh-132px)] border-t border-white/[.06] bg-transparent px-1 py-6 sm:px-2 sm:py-8;
+    @apply min-h-[calc(100vh-132px)] border-t border-border bg-transparent px-1 py-6 sm:px-2 sm:py-8;
   }
   .workspace-panel details {
     border-radius: 0 !important;
     border-width: 0 0 1px 0 !important;
-    border-color: rgba(255,255,255,.065) !important;
+    border-color: hsl(var(--border)) !important;
     background: transparent !important;
     padding: 14px 4px !important;
   }
-  .workspace-panel details:hover { background: rgba(255,255,255,.018) !important; }
+  .workspace-panel details:hover { background: hsl(var(--accent) / .45) !important; }
   .workspace-panel article { box-shadow: none !important; }
   .nav-tab { transition: color .22s ease, background-color .22s ease, transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease; }
   .nav-tab:hover { transform: translateY(-1px); }
@@ -58,11 +110,20 @@
   .nav-tab.active { animation: soft-pop .28s cubic-bezier(.2,.8,.2,1); }
   .panel-enter { animation: panel-enter .34s cubic-bezier(.2,.8,.2,1) both; }
   .toast-enter { animation: toast-enter .32s cubic-bezier(.2,.8,.2,1) both; }
-  .hover-lift { border-radius: 0 !important; border-width: 0 0 1px !important; border-color: rgba(255,255,255,.065) !important; background: transparent !important; transition: color .2s ease, background-color .2s ease; }
-  .hover-lift:hover { background: rgba(255,255,255,.018) !important; }
+  .hover-lift { border-radius: 0 !important; border-width: 0 0 1px !important; border-color: hsl(var(--border)) !important; background: transparent !important; transition: color .2s ease, background-color .2s ease; }
+  .hover-lift:hover { background: hsl(var(--accent) / .45) !important; }
   .eyebrow {
-    @apply text-[9px] font-semibold uppercase tracking-[.19em] text-white/30;
+    @apply text-[9px] font-semibold uppercase tracking-[.19em] text-muted-foreground;
   }
+  .interactive-target { @apply min-h-11 min-w-11; }
+  .icon-button { @apply min-h-11 min-w-11; }
+  .app-ambient {
+    background:
+      radial-gradient(circle at 18% -10%, hsl(var(--foreground) / .08), transparent 34%),
+      radial-gradient(circle at 92% 0%, hsl(var(--profit) / .06), transparent 26%);
+  }
+  .theme-swatch { @apply flex min-h-11 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground; }
+  .theme-swatch[aria-checked="true"] { @apply border-primary bg-primary text-primary-foreground; }
 }
 
 @keyframes panel-enter { from { opacity: 0; transform: translateY(8px) scale(.995); } to { opacity: 1; transform: translateY(0) scale(1); } }

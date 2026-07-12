@@ -36,11 +36,11 @@ export function PositionsPanel({
     return (
       <div className="grid min-h-[520px] place-items-center text-center">
         <div>
-          <CircleDollarSign className="mx-auto h-7 w-7 text-white/20" />
+          <CircleDollarSign className="mx-auto h-7 w-7 text-muted-foreground/70" />
           <h2 className="mt-4 text-lg font-semibold">
             Aucune position ouverte
           </h2>
-          <p className="mt-2 text-xs text-white/35">
+          <p className="mt-2 text-xs text-muted-foreground">
             Les prochaines positions apparaîtront ici avec leur graphique
             professionnel.
           </p>
@@ -63,28 +63,29 @@ export function PositionsPanel({
   const totalNet = detail?.total_trade_net_pnl_usd ?? pnl;
   return (
     <div>
-      <header className="border-b border-white/[.06] pb-5">
-        <p className="text-[9px] font-semibold uppercase tracking-[.19em] text-white/30">
+      <header className="border-b border-border pb-5">
+        <p className="text-[9px] font-semibold uppercase tracking-[.19em] text-muted-foreground">
           Portfolio
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-.04em]">
           Positions ouvertes
         </h1>
-        <p className="mt-1 text-xs text-white/35">
+        <p className="mt-1 text-xs text-muted-foreground">
           Historique des objectifs, P&L réalisé et capital restant en temps
           réel.
         </p>
       </header>
-      <div className="mt-5 flex gap-5 border-b border-white/[.06]">
+      <div className="mt-5 flex gap-5 border-b border-border">
         {data.positions.map((item) => (
           <button
             key={item.symbol}
             onClick={() => setSelected(item.symbol)}
-            className={`border-b-2 px-1 pb-3 text-xs transition ${active === item.symbol ? "border-white text-white" : "border-transparent text-white/35 hover:text-white/70"}`}
+            aria-pressed={active === item.symbol}
+            className={`min-h-11 border-b-2 px-2 text-xs transition ${active === item.symbol ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
           >
             {item.symbol}
             <span
-              className={`ml-2 font-mono ${(item.unrealized_pnl_usd ?? 0) >= 0 ? "text-[#30d158]" : "text-[#ff453a]"}`}
+              className={`ml-2 font-mono ${(item.unrealized_pnl_usd ?? 0) >= 0 ? "text-profit" : "text-loss"}`}
             >
               {usd.format(item.unrealized_pnl_usd ?? 0)}
             </span>
@@ -96,17 +97,17 @@ export function PositionsPanel({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-3xl font-semibold">{position.symbol}</h2>
-              <Badge className="border-0 bg-white/10 text-white/60">
+              <Badge className="border-0 bg-accent text-foreground/60">
                 {position.side} · {position.leverage}×
               </Badge>
               {hitCount > 0 && (
-                <Badge className="border-0 bg-[#30d158]/10 text-[#30d158]">
+                <Badge className="border-0 bg-profit/10 text-profit">
                   <Check className="mr-1 h-3 w-3" />
                   {hitCount} TP atteint{hitCount > 1 ? "s" : ""}
                 </Badge>
               )}
             </div>
-            <p className="mt-2 text-xs text-white/35">
+            <p className="mt-2 text-xs text-muted-foreground">
               Entrée {number.format(position.entry_px)} · Mark{" "}
               {number.format(position.mark_px ?? 0)} · Position restante{" "}
               {usd.format(position.notional_usd)}
@@ -114,12 +115,12 @@ export function PositionsPanel({
           </div>
           <div className="text-right">
             <p
-              className={`font-mono text-3xl ${totalNet >= 0 ? "text-[#30d158]" : "text-[#ff453a]"}`}
+              className={`font-mono text-3xl ${totalNet >= 0 ? "text-profit" : "text-loss"}`}
             >
               {totalNet >= 0 ? "+" : ""}
               {usd.format(totalNet)}
             </p>
-            <p className="mt-1 text-[11px] text-white/35">
+            <p className="mt-1 text-[11px] text-muted-foreground">
               P&L net total du trade · latent {usd.format(pnl)}
             </p>
           </div>
@@ -140,7 +141,7 @@ export function PositionsPanel({
             closedFraction={detail.closed_fraction_pct}
           />
         )}
-        <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-t border-white/[.06] py-6 sm:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-t border-border py-6 sm:grid-cols-4 xl:grid-cols-8">
           <Datum
             label="P&L réalisé"
             value={usd.format(detail?.realized_pnl_usd ?? 0)}
@@ -195,18 +196,18 @@ function TradeLifecycle({
   closedFraction: number;
 }) {
   return (
-    <section className="mb-6 border-y border-white/[.06] py-5">
+    <section className="mb-6 border-y border-border py-5">
       <div className="mb-4 flex items-end justify-between">
         <div>
-          <p className="text-[9px] font-semibold uppercase tracking-[.18em] text-white/25">
+          <p className="text-[9px] font-semibold uppercase tracking-[.18em] text-muted-foreground">
             Cycle de vie du trade
           </p>
-          <p className="mt-1 text-xs text-white/45">
+          <p className="mt-1 text-xs text-muted-foreground">
             Chaque objectif est confirmé par un fill Hyperliquid, pas uniquement
             par le passage du prix.
           </p>
         </div>
-        <span className="font-mono text-xs text-white/50">
+        <span className="font-mono text-xs text-muted-foreground">
           {closedFraction.toFixed(1)}% clôturé
         </span>
       </div>
@@ -223,11 +224,11 @@ function TargetStep({ target }: { target: TargetAnalytics }) {
   const hit = target.status === "ACHIEVED";
   return (
     <div
-      className={`relative rounded-xl px-4 py-3 ${hit ? "bg-[#30d158]/[.07]" : "bg-white/[.025]"}`}
+      className={`relative rounded-xl px-4 py-3 ${hit ? "bg-profit/10" : "bg-muted/40"}`}
     >
       <div className="flex items-center justify-between">
         <span
-          className={`grid h-7 w-7 place-items-center rounded-full ${hit ? "bg-[#30d158] text-black" : "bg-white/[.06] text-white/35"}`}
+          className={`grid h-7 w-7 place-items-center rounded-full ${hit ? "bg-profit text-profit-foreground" : "bg-muted/60 text-muted-foreground"}`}
         >
           {hit ? (
             <Check className="h-3.5 w-3.5" />
@@ -236,7 +237,7 @@ function TargetStep({ target }: { target: TargetAnalytics }) {
           )}
         </span>
         <span
-          className={`text-[9px] font-semibold uppercase tracking-[.14em] ${hit ? "text-[#30d158]" : "text-white/25"}`}
+          className={`text-[9px] font-semibold uppercase tracking-[.14em] ${hit ? "text-profit" : "text-muted-foreground"}`}
         >
           {hit ? "Exécuté" : target.status}
         </span>
@@ -246,27 +247,27 @@ function TargetStep({ target }: { target: TargetAnalytics }) {
       </p>
       {hit ? (
         <>
-          <p className="mt-1 text-[10px] text-white/40">
+          <p className="mt-1 text-[10px] text-muted-foreground">
             Fill moyen {number.format(target.average_fill_px ?? target.price)} ·{" "}
             {usd.format(target.filled_notional_usd)} clôturés
           </p>
-          <p className="mt-2 font-mono text-xs text-[#30d158]">
+          <p className="mt-2 font-mono text-xs text-profit">
             +{usd.format(target.realized_pnl_usd)} réalisé
           </p>
-          <p className="mt-1 flex items-center gap-1 text-[9px] text-white/25">
+          <p className="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground">
             <Clock3 className="h-2.5 w-2.5" />
             {target.hit_at ? date.format(new Date(target.hit_at)) : "—"}
           </p>
         </>
       ) : (
         <>
-          <p className="mt-1 text-[10px] text-white/35">
+          <p className="mt-1 text-[10px] text-muted-foreground">
             Distance {target.distance_pct.toFixed(2)}% ·{" "}
             {target.reward_r.toFixed(2)}R
           </p>
-          <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[.06]">
+          <div className="mt-3 h-1 overflow-hidden rounded-full bg-muted/60">
             <div
-              className="h-full rounded-full bg-white/30"
+              className="h-full rounded-full bg-foreground/30"
               style={{ width: `${target.progress_pct}%` }}
             />
           </div>
@@ -287,9 +288,9 @@ function Datum({
 }) {
   return (
     <div>
-      <p className="text-[10px] text-white/30">{label}</p>
+      <p className="text-[10px] text-muted-foreground">{label}</p>
       <p
-        className={`mt-1.5 font-mono text-sm ${tone === "green" ? "text-[#30d158]" : tone === "red" ? "text-[#ff6961]" : "text-white/80"}`}
+        className={`mt-1.5 font-mono text-sm ${tone === "green" ? "text-profit" : tone === "red" ? "text-loss" : "text-foreground/80"}`}
       >
         {value}
       </p>
