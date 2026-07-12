@@ -40,6 +40,7 @@ class TradeRecord(BaseModel):
     price_return_pct: float
     margin_return_pct: float
     close_reason: str
+    decision_author: Literal["GROK", "AUTOMATIC_RULE", "USER", "BROKER", "EXCHANGE"] = "BROKER"
     outcome: Literal["PROFIT", "LOSS", "BREAK_EVEN"]
     thesis: str | None = None
     rationale: str | None = None
@@ -413,11 +414,26 @@ def _finalize_trade(
         price_return_pct=_clean(direction * (avg_exit / avg_entry - 1) * 100),
         margin_return_pct=_clean(net_pnl / initial_margin * 100),
         close_reason=trade.close_reason,
+        decision_author=_decision_author(trade.close_reason, trade.source),
         outcome=outcome,
         thesis=trade.thesis,
         rationale=trade.rationale,
         source=trade.source,
     )
+
+
+def _decision_author(close_reason: str, source: str) -> Literal[
+    "GROK", "AUTOMATIC_RULE", "USER", "BROKER", "EXCHANGE"
+]:
+    if close_reason == "MANUAL":
+        return "USER"
+    if close_reason == "LIQUIDATION":
+        return "EXCHANGE"
+    if close_reason in {"TP", "SL", "TIME_STOP"}:
+        return "AUTOMATIC_RULE"
+    if "local_cycle:" in source or "local_intent" in source:
+        return "GROK"
+    return "BROKER"
 
 
 def _normalised_fills(

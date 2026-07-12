@@ -204,6 +204,7 @@ function TradeRow({ trade }: { trade: ClosedTrade }) {
           value={`${usd.format(trade.funding_usd)}${trade.funding_source ? ` · ${trade.funding_source.replaceAll("_", " ")}` : ""}`}
         />
         <Detail label="Clôture" value={trade.close_reason.replaceAll("_", " ")} />
+        <Detail label="Auteur" value={trade.decision_author.replaceAll("_", " ")} />
         {(trade.thesis || trade.rationale) && (
           <div className="sm:col-span-2 lg:col-span-4">
             <p className="eyebrow">Thèse et retour d’expérience</p>

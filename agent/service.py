@@ -171,7 +171,7 @@ class AgentService:
                     f"Hyperliquid {settings.hyperliquid_execution_network} is not ready: "
                     f"{blockers}"
                 )
-            equity_usd = readiness["available_collateral_usd"]
+            equity_usd = readiness["account_value_usd"]
             if settings.agent_mode is AgentMode.LIVE:
                 cap = None
                 slippage_bps = settings.mainnet_slippage_bps
@@ -259,9 +259,7 @@ class AgentService:
                     "fresh Hyperliquid readiness failed before cycle: "
                     + ", ".join(readiness["blockers"])
                 )
-            self.graph_dependencies.equity_usd = readiness[
-                "available_collateral_usd"
-            ]
+            self.graph_dependencies.equity_usd = readiness["account_value_usd"]
         unresolved = self.repository.unresolved_intents()
         if unresolved:
             self.execution.reconcile()
@@ -808,7 +806,10 @@ class AgentService:
             cycles=context["cycles"],
         )
         cutoff = self.settings.trade_history_start_at.astimezone(timezone.utc)
-        trades = [item for item in trades if item.opened_at >= cutoff]
+        trades = [
+            item for item in trades
+            if item.opened_at >= cutoff or "+local_" in item.source
+        ]
         payload = {
             "trades": [item.model_dump(mode="json") for item in trades],
             "total": len(trades),
