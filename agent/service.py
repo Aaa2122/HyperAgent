@@ -39,6 +39,16 @@ class AgentService:
         engine = build_engine(settings.database_url)
         self.repository = Repository(engine, build_session_factory(engine))
         self.repository.initialize()
+        recovered_cycles = self.repository.recover_interrupted_cycles()
+        if recovered_cycles:
+            self.repository.add_event(
+                "INTERRUPTED_CYCLES_RECOVERED",
+                {
+                    "cycle_ids": recovered_cycles,
+                    "count": len(recovered_cycles),
+                },
+                severity="WARN",
+            )
         self._cycle_lock = threading.Lock()
         self._activity_lock = threading.Lock()
         self._activity: dict = {

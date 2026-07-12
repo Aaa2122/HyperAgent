@@ -16,13 +16,13 @@ from agent.service import AgentService
 
 
 def settings(**overrides) -> Settings:
-    return Settings(
-        _env_file=None,
-        agent_mode=AgentMode.PAPER,
-        database_url="sqlite://",
-        llm_provider="rules",
+    values = {
+        "agent_mode": AgentMode.PAPER,
+        "database_url": "sqlite://",
+        "llm_provider": "rules",
         **overrides,
-    )
+    }
+    return Settings(_env_file=None, **values)
 
 
 def test_live_requires_one_time_gates_mainnet_credentials_and_postgres() -> None:
@@ -180,6 +180,29 @@ def test_llm_position_projection_includes_live_pnl_and_exposure() -> None:
     assert payload["unrealized_pnl_usd"] == 300
     assert payload["roe_pct"] == 15
     assert "equity_usd" not in payload
+
+
+def test_startup_recovers_cycles_interrupted_by_a_previous_process(tmp_path) -> None:
+    database_url = f"sqlite:///{(tmp_path / 'recovery.db').as_posix()}"
+    first = AgentService(settings(database_url=database_url))
+    cycle_id = "00000000-0000-0000-0000-000000000999"
+    first.repository.create_cycle(
+        cycle_id,
+        "paper",
+        datetime.now(timezone.utc),
+    )
+
+    recovered = AgentService(settings(database_url=database_url))
+    cycle = recovered.dashboard()["cycles"][0]
+
+    assert cycle["cycle_id"] == cycle_id
+    assert cycle["status"] == "FAILED"
+    assert cycle["finished_at"] is not None
+    assert cycle["error"].startswith("PROCESS_INTERRUPTED")
+    assert cycle["state"]["incidents"][-1]["type"] == "PROCESS_INTERRUPTED"
+    assert recovered.dashboard()["events"][0]["event_type"] == (
+        "INTERRUPTED_CYCLES_RECOVERED"
+    )
 
 
 def test_api_cycle_and_dashboard() -> None:

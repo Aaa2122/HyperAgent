@@ -57,6 +57,38 @@ class Repository:
                 raise RuntimeError("kill-switch has not been initialized")
             return KillSwitchState(row.state)
 
+    def recover_interrupted_cycles(self) -> list[str]:
+        """Close cycles left RUNNING by a terminated process.
+
+        A fresh service process cannot own work created by a previous process,
+        so every RUNNING row found during startup is necessarily interrupted.
+        Keeping it RUNNING would make the dashboard and automation telemetry
+        claim work is still executing forever.
+        """
+
+        recovered: list[str] = []
+        finished_at = datetime.now(timezone.utc)
+        with self.sessions.begin() as session:
+            rows = session.scalars(
+                select(CycleRow).where(CycleRow.status == "RUNNING")
+            ).all()
+            for row in rows:
+                recovered.append(row.cycle_id)
+                state = dict(row.state or {})
+                incidents = list(state.get("incidents") or [])
+                incidents.append(
+                    {
+                        "type": "PROCESS_INTERRUPTED",
+                        "recovered_at": finished_at.isoformat(),
+                    }
+                )
+                state.update({"status": "FAILED", "incidents": incidents})
+                row.status = "FAILED"
+                row.finished_at = finished_at
+                row.error = "PROCESS_INTERRUPTED: recovered during service startup"
+                row.state = state
+        return recovered
+
     def transition_kill_switch(
         self, state: KillSwitchState, reason: str, actor: str
     ) -> dict[str, Any]:
