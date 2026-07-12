@@ -560,13 +560,23 @@ class AgentService:
         result = []
         for position in positions:
             symbol = position["symbol"]
+            current_open = self.repository.latest_filled_open_intent(symbol)
+            current_parent_id = (
+                current_open["intent_id"] if current_open is not None else None
+            )
+            symbol_protections = [
+                item for item in protections
+                if item["symbol"] == symbol
+                and item["parent_intent_id"] == current_parent_id
+                and item["status"] not in {"CANCELED", "REJECTED"}
+            ]
             mark = float(position.get("mark_px") or 0)
             entry = float(position["entry_px"])
             side = position["side"]
             stop = float(position["invalidation_px"])
             targets = sorted(
-                [float(item["trigger_px"]) for item in protections
-                 if item["symbol"] == symbol and item["kind"] == "TP"],
+                [float(item["trigger_px"]) for item in symbol_protections
+                 if item["kind"] == "TP"],
                 reverse=side == "SHORT",
             ) or [float(value) for value in position.get("targets", [])]
             direction = 1 if side == "LONG" else -1
@@ -605,7 +615,6 @@ class AgentService:
             fills_by_cloid: dict[str, list[dict]] = {}
             for fill in symbol_fills:
                 fills_by_cloid.setdefault(str(fill.get("cloid") or "").lower(), []).append(fill)
-            symbol_protections = [item for item in protections if item["symbol"] == symbol]
             tp_protections = sorted(
                 [item for item in symbol_protections if item["kind"] == "TP"],
                 key=lambda item: item["level_index"],
