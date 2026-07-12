@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 from agent.config import Settings
 from agent.scheduler import AutomationScheduler
@@ -12,6 +13,9 @@ class FakeRepository:
 
     def add_event(self, event_type, payload, **kwargs):
         self.events.append((event_type, payload, kwargs))
+
+    def current_kill_switch(self):
+        return SimpleNamespace(value="RUNNING")
 
 
 class FakeService:
@@ -81,3 +85,20 @@ def test_interval_change_recomputes_deadline_and_wakes_waiter() -> None:
     assert service.cycles >= 2
     assert scheduler.status()["next_cycle_at"] is None
     assert previous_deadline is not None
+
+
+def test_kill_switch_resume_requeues_immediately() -> None:
+    settings = Settings(_env_file=None, automation_enabled=True, llm_provider="rules")
+    service = FakeService()
+    scheduler = AutomationScheduler(service, settings)
+    scheduler.start()
+    time.sleep(0.03)
+
+    paused = scheduler.on_kill_switch_changed("PAUSED")
+    assert paused["next_cycle_at"] is None
+    assert paused["activation_reason"] == "KILL_SWITCH_PAUSED"
+
+    resumed = scheduler.on_kill_switch_changed("RUNNING")
+    assert resumed["next_cycle_at"] is not None
+    assert resumed["activation_reason"] == "KILL_SWITCH_RESUMED"
+    scheduler.stop()

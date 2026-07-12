@@ -125,6 +125,26 @@ class AutomationScheduler:
         self._schedule_changed.set()
         return self.status()
 
+    def on_kill_switch_changed(self, state: str) -> dict[str, Any]:
+        """Synchronize operator state with the in-memory scheduler immediately."""
+        resumed = state == "RUNNING"
+        with self._state_lock:
+            enabled = bool(self._state["enabled"])
+            if resumed and enabled:
+                self._state["next_cycle_at"] = self._now()
+                self._state["activation_state"] = "WAITING"
+                self._state["activation_reason"] = "KILL_SWITCH_RESUMED"
+                self._state["last_cycle_reason"] = "KILL_SWITCH_RESUMED"
+            elif not resumed:
+                self._state["next_cycle_at"] = None
+                self._state["activation_state"] = "BLOCKED"
+                self._state["activation_reason"] = f"KILL_SWITCH_{state}"
+                self._state["last_cycle_reason"] = f"KILL_SWITCH_{state}"
+        # Interrupt a long deadline wait so resume runs now and pause stops the
+        # next scheduled start without restarting either worker thread.
+        self._schedule_changed.set()
+        return self.status()
+
     def _activation_config(self) -> ActivationConfig:
         return ActivationConfig(
             mode=self.settings.activation_mode,
@@ -307,7 +327,12 @@ class AutomationScheduler:
                     {"error": type(exc).__name__},
                     severity="ERROR",
                 )
+            kill_reader = getattr(
+                self.service.repository, "current_kill_switch", None
+            )
+            kill_state = kill_reader().value if callable(kill_reader) else "RUNNING"
             with self._state_lock:
+                resume_pending = self._state.get("last_cycle_reason") == "KILL_SWITCH_RESUMED"
                 enabled = bool(self._state["enabled"])
                 self._state["last_cycle_finished_at"] = self._now()
                 self._state["last_cycle_status"] = status
@@ -328,8 +353,14 @@ class AutomationScheduler:
                 self._state["next_activation_window_local"] = policy.get(
                     "next_window_local"
                 )
-                if not enabled:
+                if kill_state != "RUNNING":
                     self._state["next_cycle_at"] = None
+                    self._state["activation_state"] = "BLOCKED"
+                    self._state["activation_reason"] = f"KILL_SWITCH_{kill_state}"
+                elif not enabled:
+                    self._state["next_cycle_at"] = None
+                elif resume_pending:
+                    self._state["next_cycle_at"] = self._now()
                 elif (
                     policy.get("reason") == "OUTSIDE_ACTIVATION_WINDOW"
                     and policy.get("next_window_at")

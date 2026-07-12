@@ -234,3 +234,23 @@ def test_halted_cannot_be_resumed_from_dashboard() -> None:
             json={"state": "RUNNING", "reason": "Unsafe direct resume", "actor": "pytest"},
         )
         assert resumed.status_code == 409
+
+
+def test_dashboard_resume_wakes_scheduler_immediately() -> None:
+    configured = settings().model_copy(update={"automation_enabled": True})
+    with TestClient(create_app(configured)) as client:
+        paused = client.post(
+            "/api/killswitch",
+            json={"state": "PAUSED", "reason": "Pause wake test", "actor": "pytest"},
+        )
+        assert paused.status_code == 200
+        assert paused.json()["automation"]["next_cycle_at"] is None
+
+        resumed = client.post(
+            "/api/killswitch",
+            json={"state": "RUNNING", "reason": "Resume wake test", "actor": "pytest"},
+        )
+        assert resumed.status_code == 200
+        runtime = resumed.json()["automation"]
+        assert runtime["activation_reason"] == "KILL_SWITCH_RESUMED"
+        assert runtime["next_cycle_at"] is not None

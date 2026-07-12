@@ -123,9 +123,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status_code=409,
                 detail="HALTED requires explicit recovery and reconciliation; dashboard resume is forbidden",
             )
-        return service.repository.transition_kill_switch(
+        result = service.repository.transition_kill_switch(
             command.state, command.reason, command.actor
         )
+        result["automation"] = scheduler.on_kill_switch_changed(command.state.value)
+        return result
 
     dist = Path(__file__).resolve().parents[1] / "frontend" / "dist"
     if dist.exists():
