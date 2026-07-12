@@ -303,7 +303,8 @@ class AutomationScheduler:
         while not self._stop.is_set():
             with self._state_lock:
                 enabled = bool(self._state["enabled"])
-            if not enabled:
+                scheduled_at = self._state["next_cycle_at"]
+            if not enabled or scheduled_at is None:
                 self._schedule_changed.wait(0.5)
                 self._schedule_changed.clear()
                 continue

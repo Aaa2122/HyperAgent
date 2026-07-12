@@ -102,3 +102,17 @@ def test_kill_switch_resume_requeues_immediately() -> None:
     assert resumed["next_cycle_at"] is not None
     assert resumed["activation_reason"] == "KILL_SWITCH_RESUMED"
     scheduler.stop()
+
+
+def test_paused_scheduler_does_not_spin_skipped_cycles() -> None:
+    settings = Settings(_env_file=None, automation_enabled=True, llm_provider="rules")
+    settings.cycle_interval_seconds = 0.02
+    service = FakeService()
+    scheduler = AutomationScheduler(service, settings)
+    scheduler.start()
+    time.sleep(0.04)
+    scheduler.on_kill_switch_changed("PAUSED")
+    cycles_at_pause = service.cycles
+    time.sleep(0.08)
+    scheduler.stop()
+    assert service.cycles == cycles_at_pause
