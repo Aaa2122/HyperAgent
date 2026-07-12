@@ -109,6 +109,7 @@ class PromptPosition(BaseModel):
     trailing_stop_pct: float | None = None
     time_stop_hours: float | None = None
     move_to_break_even_at_r: float | None = None
+    close_reason: str | None = None
 
 
 class StructuredReason(BaseModel):

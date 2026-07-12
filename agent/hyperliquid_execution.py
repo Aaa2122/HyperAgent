@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from decimal import Decimal, ROUND_DOWN
+from datetime import datetime, timezone
 from typing import Any
 
 from eth_account import Account
@@ -1018,12 +1019,12 @@ class HyperliquidExecutionService:
         return positions
 
     def monitor(self, marks: dict[str, float]) -> list[dict]:
-        del marks  # Trigger orders execute exchange-side; polling only reconciles state.
         before = {
             item["protection_id"]: item["status"]
             for item in self.repository.protective_orders()
         }
         self.reconcile()
+        self._apply_dynamic_management(marks)
         changes: list[dict] = []
         for item in self.repository.protective_orders():
             previous = before.get(item["protection_id"])
@@ -1038,6 +1039,105 @@ class HyperliquidExecutionService:
                     }
                 )
         return changes
+
+    def _apply_dynamic_management(self, marks: dict[str, float]) -> None:
+        for position in self.positions():
+            symbol = position["symbol"]
+            metadata = self.repository.latest_filled_open_intent(symbol)
+            if metadata is None:
+                continue
+            payload = metadata.get("payload", {})
+            mode = str(payload.get("exit_management", "FIXED"))
+            mark = float(marks.get(symbol) or position.get("mark_px") or 0)
+            if mark <= 0:
+                continue
+            if mode == "TIME_STOP" and payload.get("time_stop_hours"):
+                opened = metadata.get("created_at")
+                if isinstance(opened, str):
+                    opened = datetime.fromisoformat(opened.replace("Z", "+00:00"))
+                if isinstance(opened, datetime):
+                    if opened.tzinfo is None:
+                        opened = opened.replace(tzinfo=timezone.utc)
+                    elapsed = (datetime.now(timezone.utc) - opened).total_seconds() / 3600
+                    if elapsed >= float(payload["time_stop_hours"]):
+                        self._automatic_close(position, metadata, mark, "TIME_STOP")
+                        continue
+            if mode == "TRAILING" and payload.get("trailing_stop_pct"):
+                state = self.repository.latest_event_payload(
+                    "DYNAMIC_EXIT_STATE", symbol=symbol,
+                    parent_intent_id=metadata["intent_id"],
+                ) or {}
+                previous = float(state.get("watermark_px") or position["entry_px"])
+                watermark = (
+                    max(previous, mark) if position["side"] == "LONG"
+                    else min(previous, mark)
+                )
+                if watermark != previous or not state:
+                    self.repository.add_event("DYNAMIC_EXIT_STATE", {
+                        "symbol": symbol,
+                        "parent_intent_id": metadata["intent_id"],
+                        "watermark_px": watermark,
+                        "mode": "TRAILING",
+                    }, cycle_id=metadata["cycle_id"])
+                distance = float(payload["trailing_stop_pct"]) / 100
+                hit = (
+                    mark <= watermark * (1 - distance)
+                    if position["side"] == "LONG"
+                    else mark >= watermark * (1 + distance)
+                )
+                if hit:
+                    self._automatic_close(position, metadata, mark, "TRAILING_STOP")
+                    continue
+            threshold = payload.get("move_to_break_even_at_r")
+            if threshold:
+                state = self.repository.latest_event_payload(
+                    "BREAK_EVEN_ARMED", symbol=symbol,
+                    parent_intent_id=metadata["intent_id"],
+                )
+                entry = float(position["entry_px"])
+                invalidation = float(position["invalidation_px"])
+                risk = max(abs(entry - invalidation), 1e-12)
+                favorable_r = (
+                    (mark - entry) / risk if position["side"] == "LONG"
+                    else (entry - mark) / risk
+                )
+                if state is None and favorable_r >= float(threshold):
+                    self.repository.add_event("BREAK_EVEN_ARMED", {
+                        "symbol": symbol,
+                        "parent_intent_id": metadata["intent_id"],
+                        "armed_at_px": mark,
+                        "threshold_r": float(threshold),
+                    }, cycle_id=metadata["cycle_id"])
+                    state = {"armed": True}
+                if state is not None and (
+                    (position["side"] == "LONG" and mark <= entry)
+                    or (position["side"] == "SHORT" and mark >= entry)
+                ):
+                    self._automatic_close(position, metadata, mark, "BREAK_EVEN")
+
+    def _automatic_close(
+        self, position: dict, metadata: dict, mark: float, reason: str
+    ) -> None:
+        if self.repository.current_kill_switch() is not KillSwitchState.RUNNING:
+            return
+        payload = metadata.get("payload", {})
+        decision_key = hashlib.sha256(
+            f"dynamic-close|{metadata['intent_id']}|{reason}".encode()
+        ).hexdigest()
+        order = ApprovedOrder(
+            cycle_id=metadata["cycle_id"],
+            playbook_id=str(payload.get("playbook_id") or "dynamic-management"),
+            symbol=position["symbol"],
+            action="CLOSE",
+            direction=position["side"],
+            notional_usd=float(position["notional_usd"]),
+            mark_px=mark,
+            invalidation_px=float(position["invalidation_px"]),
+            leverage=int(position.get("leverage", 1)),
+            close_reason=reason,
+            decision_key=decision_key,
+        )
+        self.execute(order)
 
     def _wire_values(self, order: ApprovedOrder) -> tuple[float, float, bool]:
         coin = self.info.name_to_coin[order.symbol]

@@ -148,6 +148,25 @@ class Repository:
                 )
             )
 
+    def latest_event_payload(
+        self, event_type: str, *, symbol: str, parent_intent_id: str
+    ) -> dict[str, Any] | None:
+        with self.sessions() as session:
+            rows = session.scalars(
+                select(AppEventRow)
+                .where(AppEventRow.event_type == event_type)
+                .order_by(desc(AppEventRow.event_id))
+                .limit(500)
+            ).all()
+            for row in rows:
+                payload = dict(row.payload or {})
+                if (
+                    payload.get("symbol") == symbol
+                    and payload.get("parent_intent_id") == parent_intent_id
+                ):
+                    return payload
+        return None
+
     def unresolved_intents(self) -> list[dict[str, Any]]:
         terminal = {"FILLED", "REJECTED", "CANCELED", "SIMULATED"}
         with self.sessions() as session:

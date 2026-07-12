@@ -429,7 +429,7 @@ def _decision_author(close_reason: str, source: str) -> Literal[
         return "USER"
     if close_reason == "LIQUIDATION":
         return "EXCHANGE"
-    if close_reason in {"TP", "SL", "TIME_STOP"}:
+    if close_reason in {"TP", "SL", "TIME_STOP", "TRAILING_STOP", "BREAK_EVEN"}:
         return "AUTOMATIC_RULE"
     if "local_cycle:" in source or "local_intent" in source:
         return "GROK"
@@ -575,6 +575,10 @@ def _canonical_close_reason(value: str, *, local: bool) -> str:
         return "SL"
     if "time stop" in normalized or "timeout" in normalized or "horizon" in normalized:
         return "TIME_STOP"
+    if "trailing" in normalized:
+        return "TRAILING_STOP"
+    if "break even" in normalized or "breakeven" in normalized:
+        return "BREAK_EVEN"
     if "liquidat" in normalized:
         return "LIQUIDATION"
     if "manual" in normalized:
