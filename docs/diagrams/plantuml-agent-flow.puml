@@ -1,67 +1,45 @@
 @startuml
+skinparam style strictuml
 skinparam dpi 180
-skinparam backgroundColor #F7F8FA
+skinparam backgroundColor #FFFFFF
 skinparam shadowing false
-skinparam roundcorner 18
+skinparam roundcorner 8
 skinparam defaultFontName Arial
-skinparam defaultFontSize 15
-skinparam ArrowColor #53657A
-skinparam ArrowThickness 1.5
-skinparam sequenceMessageAlign center
-skinparam sequenceGroupBorderColor #D9E0E8
-skinparam sequenceGroupBackgroundColor #FFFFFF
-skinparam sequenceGroupHeaderFontColor #172033
-skinparam sequenceLifeLineBorderColor #AAB8C6
-skinparam sequenceLifeLineBackgroundColor #FFFFFF
-skinparam noteBackgroundColor #EEF6FF
-skinparam noteBorderColor #7CB7FF
-skinparam noteFontColor #294765
+skinparam defaultFontSize 17
+skinparam defaultFontColor #1F2937
+skinparam ArrowColor #315780
+skinparam ArrowThickness 1.6
+skinparam activityBorderColor #315780
+skinparam activityBackgroundColor #FFFFFF
+skinparam activityDiamondBorderColor #315780
+skinparam activityDiamondBackgroundColor #E9F0F7
+skinparam noteBackgroundColor #F3F7FA
+skinparam noteBorderColor #8496A8
+skinparam titleFontColor #17324D
+skinparam titleFontSize 24
 
-title HyperAgent — Multi-agent decision architecture
-caption Typed state flows from evidence to a single, isolated side-effect boundary.
+title Multi-agent decision process
 
-participant "Market +\nPortfolio" as market #EAF3FF
-participant "Opportunity\nScout" as scout #EAF3FF
-participant "Research" as research #EAF3FF
-participant "Strategist" as strategist #F2EDFF
-participant "Trader" as trader #F2EDFF
-participant "Neutral\nSimulator" as simulator #FFF5DF
-participant "Risk\nReview" as review #F2EDFF
-participant "Execution\nBoundary" as runtime #EAF9F0
-participant "Hyperliquid" as exchange #DFF7EA
+start
+:<b>1. Market intelligence</b>\nOpportunity Scout selects relevant markets\nResearch Agent qualifies external information;
+:<b>2. Portfolio strategy</b>\nStrategist builds the multi-asset playbook\nfrom market data and current positions;
+:<b>3. Trade proposal</b>\nTrader selects the action, allocation,\nleverage and exit policy;
+:<b>4. Neutral assessment</b>\nSimulator calculates margin, loss, funding\nand execution consequences;
+:<b>5. Final review</b>\nRisk Review confirms, adjusts or cancels\nthe initial proposal;
 
-group DISCOVERY AND EVIDENCE
-  market -> scout : live DEX catalog · prices · OI · funding
-  scout -> research : ranked tradable universe
-  research -> research : isolate X / web content
-  research --> strategist : typed ResearchBundle
-end
+if (Executable action?) then (Yes)
+  :<b>6. Controlled execution</b>\nValidate operations, persist the intent,\nsign the order and reconcile fills;
+else (No)
+  :Record HOLD / CANCEL decision;
+endif
 
-group MULTI-AGENT REASONING
-  market -> strategist : features + current portfolio
-  strategist --> trader : multi-asset playbook
-  market -> trader : equity · positions · orders · margin
-  trader -> simulator : initial plan\naction · allocation · leverage · exits
-  simulator --> review : neutral consequences\nloss · margin · funding · slippage
-  review --> runtime : KEEP_AS_IS / ADJUST / CANCEL
-end
+:<b>7. Observability</b>\nPublish decisions, costs, positions and P&L\nto the operator dashboard;
+stop
 
-group DETERMINISTIC SIDE EFFECT
-  runtime -> runtime : strict schema + operational validation
-  runtime -> runtime : persist intent + stable decision key / cloid
-  runtime -> exchange : submit signed order once
-  exchange --> runtime : acknowledgement · orders · actual fills
-  runtime -> exchange : reconcile reduce-only protections
-  runtime -> runtime : persist fees · funding · net P&L · trace
-end
-
-note over scout,review
-  Agents reason over shared LangGraph state.
-  They never receive credentials or an order-submission tool.
-end note
-
-note over runtime,exchange
-  Persistence happens before submission.
-  Ambiguous network outcomes are reconciled, never blindly retried.
+note right
+  Separation of responsibilities
+  • agents analyse and propose
+  • deterministic services validate
+  • only the executor can sign an order
 end note
 @enduml
