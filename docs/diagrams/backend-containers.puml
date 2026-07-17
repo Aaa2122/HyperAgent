@@ -1,0 +1,82 @@
+@startuml
+skinparam dpi 180
+skinparam backgroundColor #F7F8FA
+skinparam shadowing false
+skinparam roundcorner 18
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #53657A
+skinparam ArrowThickness 1.5
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam packageBorderColor #D9E0E8
+skinparam packageBackgroundColor #FFFFFF
+skinparam componentBorderColor #D9E0E8
+skinparam componentBackgroundColor #FFFFFF
+skinparam componentFontColor #172033
+skinparam databaseBorderColor #90A4B8
+skinparam databaseBackgroundColor #F4F7FA
+
+title HyperAgent — Backend and container topology
+caption Three containers, four external APIs, one observable execution path.
+
+actor "Operator" as operator
+
+node "Docker Compose" as compose #FFFFFF {
+  node "dashboard" as dashboard #EAF3FF {
+    component "nginx\nstatic hosting + API proxy" as nginx
+    component "React 19 + TypeScript\nreal-time operator UI" as react
+  }
+
+  node "api" as api #F2EDFF {
+    component "FastAPI\nREST + runtime controls" as fastapi
+    component "Adaptive scheduler\nevent and cadence triggers" as scheduler
+    component "LangGraph\nmulti-agent orchestration" as langgraph
+    component "Execution service\nvalidation · signing · reconciliation" as execution
+    component "Observability\nprompts · tokens · costs · events" as telemetry
+  }
+
+  node "postgres" as pg #EAF9F0 {
+    database "PostgreSQL 17\ncycles · decisions · intents\nfills · protections · costs" as database
+    folder "Persistent volume\nagent-postgres" as volume
+  }
+}
+
+cloud "xAI API\nstructured generation" as xai #FFF5DF
+cloud "X + Web Search\nexternal evidence" as web #FFF5DF
+cloud "Hyperliquid Info API\nmarket + account reads" as info #DFF7EA
+cloud "Hyperliquid Exchange API\nsigned orders" as exchange #DFF7EA
+
+operator --> nginx : http://localhost:4173
+nginx --> react
+react --> fastapi : JSON / polling
+fastapi --> scheduler : start · pause · controls
+scheduler --> langgraph : autonomous cycle
+langgraph --> xai : typed prompts
+langgraph --> web : isolated research
+langgraph --> info : live state
+langgraph --> execution : approved plan
+execution --> exchange : signed actions
+exchange --> execution : acknowledgements / fills
+execution --> info : reconcile truth
+langgraph --> telemetry
+execution --> telemetry
+fastapi --> database
+telemetry --> database
+execution --> database
+database --> volume
+
+note bottom of execution
+  Credentials remain inside the API container.
+  The browser never signs or submits an order.
+end note
+
+legend bottom
+  |= Surface |= Role |
+  |<#EAF3FF> | Operator experience |
+  |<#F2EDFF> | Reasoning and orchestration |
+  |<#EAF9F0> | Durable state |
+  |<#FFF5DF> | AI and research APIs |
+  |<#DFF7EA> | Exchange APIs |
+endlegend
+@enduml

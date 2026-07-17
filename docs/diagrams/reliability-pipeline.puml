@@ -1,0 +1,83 @@
+@startuml
+skinparam dpi 180
+skinparam backgroundColor #F7F8FA
+skinparam shadowing false
+skinparam roundcorner 18
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #53657A
+skinparam ArrowThickness 1.5
+skinparam activityBorderColor #C9D3DE
+skinparam activityBackgroundColor #FFFFFF
+skinparam activityFontColor #172033
+skinparam activityDiamondBorderColor #7A8EA3
+skinparam activityDiamondBackgroundColor #EEF3F7
+skinparam noteBackgroundColor #EEF6FF
+skinparam noteBorderColor #7CB7FF
+
+title HyperAgent — Reliable order lifecycle
+caption Persistence and reconciliation turn an LLM proposal into an idempotent exchange action.
+
+start
+:LLM returns a typed proposal;
+:Pydantic validates strict schema\nand rejects unknown fields;
+
+if (Valid response?) then (yes)
+  :Calculate neutral consequences\nloss at stop · margin · funding · slippage;
+  :One final model review\nKEEP_AS_IS · ADJUST · CANCEL;
+else (no)
+  :Fail closed to HOLD;
+  :Persist parse incident;
+  stop
+endif
+
+if (Final action executable?) then (yes)
+  :Run deterministic operational checks;
+else (no)
+  :Persist decision and rationale;
+  stop
+endif
+
+if (Operationally coherent?) then (yes)
+  :Build deterministic decision key + cloid;
+else (no)
+  :Block invalid side effect;
+  :Persist guardrail verdict;
+  stop
+endif
+
+:Write durable PENDING intent\nbefore any network call;
+
+if (Intent already exists?) then (yes)
+  :Reuse existing intent;
+  :Reconcile exchange truth;
+else (no)
+  :Submit signed order once;
+endif
+
+if (Acknowledgement unambiguous?) then (yes)
+  :Persist exchange order and actual fills;
+else (no)
+  :Mark acknowledgement UNKNOWN;
+  :Query open orders, history and fills;
+endif
+
+:Place / reconcile reduce-only protections\nonly when selected by the final plan;
+:Reconstruct position, fees, funding\nand realized net P&L from exchange data;
+:Expose complete trace in dashboard;
+stop
+
+floating note left
+  Kill-switch is checked at cycle entry
+  and again immediately before execution.
+end note
+
+legend bottom
+  |= Invariant |= Result |
+  | Strict contracts | Invalid model output cannot reach execution |
+  | Persist before submit | A retry cannot invent a second intent |
+  | Stable cloid | Duplicate submissions are detectable |
+  | Reconcile ambiguous state | Network uncertainty is not blind-retried |
+  | Exchange truth | Fills, fees and P&L remain reconstructable |
+endlegend
+@enduml

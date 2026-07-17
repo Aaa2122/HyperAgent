@@ -1,0 +1,67 @@
+@startuml
+skinparam dpi 180
+skinparam backgroundColor #F7F8FA
+skinparam shadowing false
+skinparam roundcorner 18
+skinparam defaultFontName Arial
+skinparam defaultFontSize 15
+skinparam ArrowColor #53657A
+skinparam ArrowThickness 1.5
+skinparam sequenceMessageAlign center
+skinparam sequenceGroupBorderColor #D9E0E8
+skinparam sequenceGroupBackgroundColor #FFFFFF
+skinparam sequenceGroupHeaderFontColor #172033
+skinparam sequenceLifeLineBorderColor #AAB8C6
+skinparam sequenceLifeLineBackgroundColor #FFFFFF
+skinparam noteBackgroundColor #EEF6FF
+skinparam noteBorderColor #7CB7FF
+skinparam noteFontColor #294765
+
+title HyperAgent — Multi-agent decision architecture
+caption Typed state flows from evidence to a single, isolated side-effect boundary.
+
+participant "Market +\nPortfolio" as market #EAF3FF
+participant "Opportunity\nScout" as scout #EAF3FF
+participant "Research" as research #EAF3FF
+participant "Strategist" as strategist #F2EDFF
+participant "Trader" as trader #F2EDFF
+participant "Neutral\nSimulator" as simulator #FFF5DF
+participant "Risk\nReview" as review #F2EDFF
+participant "Execution\nBoundary" as runtime #EAF9F0
+participant "Hyperliquid" as exchange #DFF7EA
+
+group DISCOVERY AND EVIDENCE
+  market -> scout : live DEX catalog · prices · OI · funding
+  scout -> research : ranked tradable universe
+  research -> research : isolate X / web content
+  research --> strategist : typed ResearchBundle
+end
+
+group MULTI-AGENT REASONING
+  market -> strategist : features + current portfolio
+  strategist --> trader : multi-asset playbook
+  market -> trader : equity · positions · orders · margin
+  trader -> simulator : initial plan\naction · allocation · leverage · exits
+  simulator --> review : neutral consequences\nloss · margin · funding · slippage
+  review --> runtime : KEEP_AS_IS / ADJUST / CANCEL
+end
+
+group DETERMINISTIC SIDE EFFECT
+  runtime -> runtime : strict schema + operational validation
+  runtime -> runtime : persist intent + stable decision key / cloid
+  runtime -> exchange : submit signed order once
+  exchange --> runtime : acknowledgement · orders · actual fills
+  runtime -> exchange : reconcile reduce-only protections
+  runtime -> runtime : persist fees · funding · net P&L · trace
+end
+
+note over scout,review
+  Agents reason over shared LangGraph state.
+  They never receive credentials or an order-submission tool.
+end note
+
+note over runtime,exchange
+  Persistence happens before submission.
+  Ambiguous network outcomes are reconciled, never blindly retried.
+end note
+@enduml
