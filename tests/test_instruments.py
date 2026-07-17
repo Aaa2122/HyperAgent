@@ -22,7 +22,6 @@ from agent.instruments import (
 )
 from agent.service import AgentService
 
-
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "hip3_xyz_info.json"
 
 
@@ -118,9 +117,7 @@ def test_xyz_discovery_builds_a_live_registry(
     assert registry.venue.total_net_deposit == pytest.approx(4_103_492_112.447823)
     assert registry.session.status is UsEquitySessionStatus.REGULAR
     assert tuple(item.symbol for item in registry.instruments) == XYZ_US_EQUITY_SYMBOLS
-    assert tuple(item.universe_index for item in registry.instruments) == tuple(
-        range(1, 8)
-    )
+    assert tuple(item.universe_index for item in registry.instruments) == tuple(range(1, 8))
 
     tsla = registry.get("tsla")
     assert tsla is not None
@@ -156,9 +153,7 @@ def test_missing_allowlisted_market_remains_visible_with_not_listed_status(
 ) -> None:
     meta, contexts = xyz_info_fixture["metaAndAssetCtxs"]
     aapl_index = next(
-        index
-        for index, item in enumerate(meta["universe"])
-        if item["name"] == "xyz:AAPL"
+        index for index, item in enumerate(meta["universe"]) if item["name"] == "xyz:AAPL"
     )
     meta["universe"].pop(aapl_index)
     contexts.pop(aapl_index)
@@ -212,10 +207,7 @@ def test_missing_xyz_dex_returns_explicit_placeholders_without_metadata_calls(
     assert registry.venue.status_reason == "DEX_NOT_PRESENT_IN_PERP_DEX_CATALOG"
     assert registry.warnings == ("HIP3_DEX_NOT_DISCOVERED",)
     assert len(registry.instruments) == 7
-    assert all(
-        item.venue_status is VenueMarketStatus.NOT_LISTED
-        for item in registry.instruments
-    )
+    assert all(item.venue_status is VenueMarketStatus.NOT_LISTED for item in registry.instruments)
     assert registry.session.status is UsEquitySessionStatus.CLOSED
     assert client.requests == [{"type": "perpDexs"}]
 
@@ -233,8 +225,7 @@ def test_info_outage_is_reported_without_dropping_instruments(
     assert registry.warnings == ("HIP3_DEX_CATALOG_UNAVAILABLE",)
     assert len(registry.instruments) == 7
     assert all(
-        item.venue_status is VenueMarketStatus.DATA_UNAVAILABLE
-        for item in registry.instruments
+        item.venue_status is VenueMarketStatus.DATA_UNAVAILABLE for item in registry.instruments
     )
     assert all(item.live_eligible is False for item in registry.instruments)
 
@@ -251,10 +242,7 @@ def test_optional_dex_status_outage_does_not_hide_valid_metadata(
     assert registry.venue.status is DexDiscoveryStatus.DISCOVERED
     assert registry.venue.status_reason == "DEX_DISCOVERED_STATUS_UNAVAILABLE"
     assert registry.warnings == ("HIP3_DEX_STATUS_UNAVAILABLE",)
-    assert all(
-        item.venue_status is VenueMarketStatus.AVAILABLE
-        for item in registry.instruments
-    )
+    assert all(item.venue_status is VenueMarketStatus.AVAILABLE for item in registry.instruments)
 
 
 def test_service_exposes_and_caches_the_read_only_registry(

@@ -10,8 +10,8 @@ from fastapi.staticfiles import StaticFiles
 
 from agent.config import Settings
 from agent.domain import AutomationCommand, KillSwitchCommand, KillSwitchState
-from agent.service import AgentService
 from agent.scheduler import AutomationScheduler
+from agent.service import AgentService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -92,8 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return {
                 "network": settings.hyperliquid_execution_network,
                 "configured": bool(
-                    settings.hyperliquid_private_key
-                    and settings.hyperliquid_account_address
+                    settings.hyperliquid_private_key and settings.hyperliquid_account_address
                 ),
                 "ready_for_orders": False,
                 "blockers": ["READINESS_CHECK_FAILED"],
@@ -141,4 +140,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if candidate.is_file():
                 return FileResponse(candidate)
             return FileResponse(dist / "index.html")
+
     return app

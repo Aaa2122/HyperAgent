@@ -11,7 +11,6 @@ from agent.history import TradeRecord, calculate_trade_metrics, reconstruct_clos
 from agent.hyperliquid import HyperliquidMarketData
 from agent.service import AgentService
 
-
 BASE_MS = 1_700_000_000_000
 
 
@@ -226,9 +225,39 @@ def test_reconstructs_short_partial_exits_and_computes_missing_closed_pnl() -> N
 def test_missing_closed_pnl_uses_the_remaining_position_cost_after_a_scale_in() -> None:
     fills = [
         _fill(13, time=BASE_MS, side="B", direction="Open Long", size=1, price=100, pnl=0, fee=0),
-        _fill(14, time=BASE_MS + 1_000, side="A", direction="Close Long", size=0.5, price=110, pnl=None, fee=0, start_position=1),
-        _fill(15, time=BASE_MS + 2_000, side="B", direction="Open Long", size=1, price=120, pnl=0, fee=0, start_position=0.5),
-        _fill(16, time=BASE_MS + 3_000, side="A", direction="Close Long", size=1.5, price=110, pnl=None, fee=0, start_position=1.5),
+        _fill(
+            14,
+            time=BASE_MS + 1_000,
+            side="A",
+            direction="Close Long",
+            size=0.5,
+            price=110,
+            pnl=None,
+            fee=0,
+            start_position=1,
+        ),
+        _fill(
+            15,
+            time=BASE_MS + 2_000,
+            side="B",
+            direction="Open Long",
+            size=1,
+            price=120,
+            pnl=0,
+            fee=0,
+            start_position=0.5,
+        ),
+        _fill(
+            16,
+            time=BASE_MS + 3_000,
+            side="A",
+            direction="Close Long",
+            size=1.5,
+            price=110,
+            pnl=None,
+            fee=0,
+            start_position=1.5,
+        ),
     ]
 
     trade = reconstruct_closed_trades(fills, funding_records=[])[0]

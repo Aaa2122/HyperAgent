@@ -2,9 +2,14 @@
 
 # HyperAgent
 
+[![CI](https://github.com/Aaa2122/HyperAgent/actions/workflows/ci.yml/badge.svg)](https://github.com/Aaa2122/HyperAgent/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 ### A stateful multi-agent system connecting LangGraph, xAI and Hyperliquid
 
 Typed decisions · neutral simulation · idempotent execution · real-time observability
+
+[Operator dashboard demo](#operator-dashboard)
 
 </div>
 

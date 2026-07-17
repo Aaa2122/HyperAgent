@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,6 +24,15 @@ from agent.scheduler import AutomationScheduler
 from agent.service import AgentService
 
 
+def _wait_until(predicate, *, timeout: float = 1.0) -> None:
+    deadline = monotonic() + timeout
+    while monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.005)
+    pytest.fail("scheduler condition was not reached before timeout")
+
+
 def paper_settings(**overrides) -> Settings:
     return Settings(
         _env_file=None,
@@ -42,9 +52,7 @@ def test_default_is_strictly_always_with_filter_disabled() -> None:
         crypto_sessions=settings.crypto_sessions,
         liquidity_filter_enabled=settings.liquidity_filter_enabled,
         liquidity_min_24h_volume_usd=settings.liquidity_min_24h_volume_usd,
-        liquidity_min_open_interest_usd=(
-            settings.liquidity_min_open_interest_usd
-        ),
+        liquidity_min_open_interest_usd=(settings.liquidity_min_open_interest_usd),
         liquidity_min_eligible_assets=settings.liquidity_min_eligible_assets,
     )
 
@@ -99,9 +107,7 @@ def test_us_equities_weekend_waits_until_monday_and_renders_local_time() -> None
 
     assert decision.state == "WAITING"
     assert decision.reason == "OUTSIDE_ACTIVATION_WINDOW"
-    assert decision.next_window_at == datetime(
-        2026, 7, 13, 13, 30, tzinfo=timezone.utc
-    )
+    assert decision.next_window_at == datetime(2026, 7, 13, 13, 30, tzinfo=timezone.utc)
     assert decision.next_window_local is not None
     assert decision.next_window_local.hour == 15
 
@@ -125,9 +131,7 @@ def test_crypto_selected_sessions_are_canonical_utc_windows() -> None:
     assert open_decision.state == "ACTIVE"
     assert open_decision.active_sessions == ["crypto:europe_us_overlap"]
     assert closed_decision.state == "WAITING"
-    assert closed_decision.next_window_at == datetime(
-        2026, 7, 13, 13, 0, tzinfo=timezone.utc
-    )
+    assert closed_decision.next_window_at == datetime(2026, 7, 13, 13, 0, tzinfo=timezone.utc)
 
 
 def test_liquidity_filter_has_explicit_bootstrap_pass_and_wait_states() -> None:
@@ -234,9 +238,7 @@ def test_service_default_policy_does_not_probe_liquidity() -> None:
         raise AssertionError("default always mode must not probe liquidity")
 
     service.market.activation_metrics = forbidden_probe
-    policy = service.scheduled_cycle_policy(
-        at=datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc)
-    )
+    policy = service.scheduled_cycle_policy(at=datetime(2026, 7, 12, 12, 0, tzinfo=timezone.utc))
 
     assert policy["run"] is True
     assert policy["state"] == "ACTIVE"
@@ -290,9 +292,7 @@ def test_service_outside_window_skips_probe_and_reports_exact_next_window() -> N
         return {}
 
     service.market.activation_metrics = forbidden_probe
-    policy = service.scheduled_cycle_policy(
-        at=datetime(2026, 7, 12, 18, 0, tzinfo=timezone.utc)
-    )
+    policy = service.scheduled_cycle_policy(at=datetime(2026, 7, 12, 18, 0, tzinfo=timezone.utc))
 
     assert policy["run"] is False
     assert policy["state"] == "WAITING"
@@ -383,7 +383,7 @@ def test_risk_monitor_continues_when_llm_automation_is_disabled() -> None:
     scheduler = AutomationScheduler(service, settings)
 
     scheduler.start()
-    time.sleep(0.075)
+    _wait_until(lambda: service.monitors >= 2)
     running_status = scheduler.status()
     scheduler.stop()
 
@@ -404,7 +404,7 @@ def test_scheduler_sleeps_until_exact_future_activation_window() -> None:
     scheduler = AutomationScheduler(service, settings)
 
     scheduler.start()
-    time.sleep(0.075)
+    _wait_until(lambda: service.cycles >= 1 and service.monitors >= 2)
     status = scheduler.status()
     reconfigured = scheduler.configure(cycle_interval_seconds=0.03)
     scheduler.stop()

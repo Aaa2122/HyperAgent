@@ -15,6 +15,7 @@ soumises qu'au check d'existence de position — pas de check de fraîcheur ni
 de playbook. Réduire le risque sur données vieilles vaut toujours mieux que
 garder le risque.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -37,6 +38,7 @@ class LLMLayerConfig(BaseModel):
     Source unique de vérité : ces valeurs sont aussi injectées dans les
     placeholders {{...}} des prompts pour que prompts et code ne divergent
     jamais."""
+
     model_config = ConfigDict(extra="forbid")
 
     min_stop_atr: float = 0.5
@@ -51,11 +53,13 @@ class LLMLayerConfig(BaseModel):
     max_leverage: int = Field(default=2, ge=1, le=50)
     operational_only: bool = False
     min_order_notional_usd: float = 25.0
-    market_data_max_age_seconds: float = 30.0   # I4
+    market_data_max_age_seconds: float = 30.0  # I4
     playbook_ttl_min_hours: int = 4
     playbook_ttl_max_hours: int = 12
     max_asset_notional_usd: dict[str, float] = Field(
-        default_factory=lambda: {symbol: 2_000.0 for symbol in ("BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI")}
+        default_factory=lambda: {
+            symbol: 2_000.0 for symbol in ("BTC", "ETH", "SOL", "XRP", "BNB", "HYPE", "LINK", "SUI")
+        }
     )
 
 
@@ -82,6 +86,7 @@ class PositionState(BaseModel):
 
 class PortfolioContext(BaseModel):
     """Construit côté code. equity_usd n'apparaît jamais dans un prompt."""
+
     model_config = ConfigDict(extra="forbid")
 
     equity_usd: float = Field(gt=0)
@@ -93,15 +98,13 @@ class PortfolioContext(BaseModel):
         return next((p for p in self.positions if p.symbol == symbol), None)
 
     def net_exposure_usd(self) -> float:
-        return sum(
-            p.notional_usd if p.side == "LONG" else -p.notional_usd
-            for p in self.positions
-        )
+        return sum(p.notional_usd if p.side == "LONG" else -p.notional_usd for p in self.positions)
 
 
 # ---------------------------------------------------------------------------
 # Checks
 # ---------------------------------------------------------------------------
+
 
 def _invalidation_violations(
     plan: AssetPlan, snap: AssetSnapshot, cfg: LLMLayerConfig
@@ -112,27 +115,35 @@ def _invalidation_violations(
     assert inv is not None  # garanti par le schéma quand bias != FLAT
 
     if plan.bias == "LONG" and inv >= snap.mark_px:
-        return [Violation(
-            code="INVALIDATION_WRONG_SIDE",
-            message=f"{plan.symbol}: LONG mais invalidation {inv} >= mark {snap.mark_px}",
-        )]
+        return [
+            Violation(
+                code="INVALIDATION_WRONG_SIDE",
+                message=f"{plan.symbol}: LONG mais invalidation {inv} >= mark {snap.mark_px}",
+            )
+        ]
     if plan.bias == "SHORT" and inv <= snap.mark_px:
-        return [Violation(
-            code="INVALIDATION_WRONG_SIDE",
-            message=f"{plan.symbol}: SHORT mais invalidation {inv} <= mark {snap.mark_px}",
-        )]
+        return [
+            Violation(
+                code="INVALIDATION_WRONG_SIDE",
+                message=f"{plan.symbol}: SHORT mais invalidation {inv} <= mark {snap.mark_px}",
+            )
+        ]
 
     dist_atr = abs(snap.mark_px - inv) / snap.atr_4h
     if dist_atr < cfg.min_stop_atr:
-        v.append(Violation(
-            code="INVALIDATION_TOO_TIGHT",
-            message=f"{plan.symbol}: stop à {dist_atr:.2f} ATR < {cfg.min_stop_atr}",
-        ))
+        v.append(
+            Violation(
+                code="INVALIDATION_TOO_TIGHT",
+                message=f"{plan.symbol}: stop à {dist_atr:.2f} ATR < {cfg.min_stop_atr}",
+            )
+        )
     elif dist_atr > cfg.max_stop_atr:
-        v.append(Violation(
-            code="INVALIDATION_TOO_WIDE",
-            message=f"{plan.symbol}: stop à {dist_atr:.2f} ATR > {cfg.max_stop_atr}",
-        ))
+        v.append(
+            Violation(
+                code="INVALIDATION_TOO_WIDE",
+                message=f"{plan.symbol}: stop à {dist_atr:.2f} ATR > {cfg.max_stop_atr}",
+            )
+        )
     return v
 
 
@@ -146,15 +157,19 @@ def check_plan_against_market(
     v = _invalidation_violations(plan, snap, cfg)
     if plan.targets:
         if plan.bias == "LONG" and min(plan.targets) <= snap.mark_px:
-            v.append(Violation(
-                code="TARGETS_BEHIND_PRICE",
-                message=f"{plan.symbol}: target(s) déjà sous le prix courant",
-            ))
+            v.append(
+                Violation(
+                    code="TARGETS_BEHIND_PRICE",
+                    message=f"{plan.symbol}: target(s) déjà sous le prix courant",
+                )
+            )
         if plan.bias == "SHORT" and max(plan.targets) >= snap.mark_px:
-            v.append(Violation(
-                code="TARGETS_BEHIND_PRICE",
-                message=f"{plan.symbol}: target(s) déjà au-dessus du prix courant",
-            ))
+            v.append(
+                Violation(
+                    code="TARGETS_BEHIND_PRICE",
+                    message=f"{plan.symbol}: target(s) déjà au-dessus du prix courant",
+                )
+            )
     return v
 
 
@@ -176,104 +191,158 @@ def check_decision(
     # Risk-reducing : volontairement permissif.
     if decision.action in ("REDUCE", "CLOSE"):
         if pos is None:
-            return [Violation(
-                code="NO_POSITION",
-                message=f"{decision.symbol}: {decision.action} sans position ouverte",
-            )]
+            return [
+                Violation(
+                    code="NO_POSITION",
+                    message=f"{decision.symbol}: {decision.action} sans position ouverte",
+                )
+            ]
         return []
 
     if cfg.operational_only:
         v: list[Violation] = []
         if pos is not None:
-            v.append(Violation(code="ALREADY_IN_POSITION", message=f"{decision.symbol}: position déjà ouverte"))
+            v.append(
+                Violation(
+                    code="ALREADY_IN_POSITION", message=f"{decision.symbol}: position déjà ouverte"
+                )
+            )
         if snap.data_age_seconds > cfg.market_data_max_age_seconds:
             v.append(Violation(code="DATA_STALE", message=f"{decision.symbol}: données périmées"))
         if decision.notional_usd is None:
-            v.append(Violation(code="NOTIONAL_NOT_EXPLICIT", message=f"{decision.symbol}: notionnel USD absent"))
+            v.append(
+                Violation(
+                    code="NOTIONAL_NOT_EXPLICIT", message=f"{decision.symbol}: notionnel USD absent"
+                )
+            )
         elif decision.notional_usd / max(decision.leverage, 1) > pf.equity_usd:
-            v.append(Violation(code="INSUFFICIENT_COLLATERAL", message=f"{decision.symbol}: marge supérieure au collatéral disponible"))
+            v.append(
+                Violation(
+                    code="INSUFFICIENT_COLLATERAL",
+                    message=f"{decision.symbol}: marge supérieure au collatéral disponible",
+                )
+            )
         if decision.leverage > min(cfg.max_leverage, snap.max_leverage):
-            v.append(Violation(code="VENUE_LEVERAGE_CAP", message=f"{decision.symbol}: levier supérieur à la limite"))
+            v.append(
+                Violation(
+                    code="VENUE_LEVERAGE_CAP",
+                    message=f"{decision.symbol}: levier supérieur à la limite",
+                )
+            )
         if plan.invalidation_px is None:
             v.append(Violation(code="STOP_MISSING", message=f"{decision.symbol}: stop absent"))
         else:
-            liquidation = snap.mark_px * (1 - 1 / decision.leverage) if decision.direction == "LONG" else snap.mark_px * (1 + 1 / decision.leverage)
-            before_stop = liquidation >= plan.invalidation_px if decision.direction == "LONG" else liquidation <= plan.invalidation_px
+            liquidation = (
+                snap.mark_px * (1 - 1 / decision.leverage)
+                if decision.direction == "LONG"
+                else snap.mark_px * (1 + 1 / decision.leverage)
+            )
+            before_stop = (
+                liquidation >= plan.invalidation_px
+                if decision.direction == "LONG"
+                else liquidation <= plan.invalidation_px
+            )
             if before_stop:
-                v.append(Violation(code="LIQUIDATION_BEFORE_STOP", message=f"{decision.symbol}: liquidation estimée avant stop"))
+                v.append(
+                    Violation(
+                        code="LIQUIDATION_BEFORE_STOP",
+                        message=f"{decision.symbol}: liquidation estimée avant stop",
+                    )
+                )
         return v
 
     # OPEN : la totale.
     v: list[Violation] = []
 
     if playbook.is_expired(now):
-        v.append(Violation(
-            code="PLAYBOOK_EXPIRED",
-            message=f"playbook v{playbook.version} expiré ({playbook.expires_at.isoformat()})",
-        ))
+        v.append(
+            Violation(
+                code="PLAYBOOK_EXPIRED",
+                message=f"playbook v{playbook.version} expiré ({playbook.expires_at.isoformat()})",
+            )
+        )
     if plan.bias == "FLAT":
-        v.append(Violation(
-            code="BIAS_FLAT",
-            message=f"{decision.symbol}: OPEN sur un plan FLAT",
-        ))
+        v.append(
+            Violation(
+                code="BIAS_FLAT",
+                message=f"{decision.symbol}: OPEN sur un plan FLAT",
+            )
+        )
     elif decision.direction != plan.bias:
-        v.append(Violation(
-            code="BIAS_MISMATCH",
-            message=f"{decision.symbol}: OPEN {decision.direction} vs bias {plan.bias}",
-        ))
+        v.append(
+            Violation(
+                code="BIAS_MISMATCH",
+                message=f"{decision.symbol}: OPEN {decision.direction} vs bias {plan.bias}",
+            )
+        )
     if pos is not None:
-        v.append(Violation(
-            code="ALREADY_IN_POSITION",
-            message=f"{decision.symbol}: position déjà ouverte (one position per symbol)",
-        ))
+        v.append(
+            Violation(
+                code="ALREADY_IN_POSITION",
+                message=f"{decision.symbol}: position déjà ouverte (one position per symbol)",
+            )
+        )
     if snap.data_age_seconds > cfg.market_data_max_age_seconds:
-        v.append(Violation(
-            code="DATA_STALE",
-            message=f"{decision.symbol}: données de {snap.data_age_seconds:.0f}s "
-                    f"> {cfg.market_data_max_age_seconds:.0f}s (I4)",
-        ))
+        v.append(
+            Violation(
+                code="DATA_STALE",
+                message=f"{decision.symbol}: données de {snap.data_age_seconds:.0f}s "
+                f"> {cfg.market_data_max_age_seconds:.0f}s (I4)",
+            )
+        )
     if plan.conviction < cfg.min_plan_conviction:
-        v.append(Violation(
-            code="LOW_PLAN_CONVICTION",
-            message=f"{decision.symbol}: conviction du plan {plan.conviction:.2f} "
-                    f"< {cfg.min_plan_conviction}",
-        ))
+        v.append(
+            Violation(
+                code="LOW_PLAN_CONVICTION",
+                message=f"{decision.symbol}: conviction du plan {plan.conviction:.2f} "
+                f"< {cfg.min_plan_conviction}",
+            )
+        )
     if decision.confidence < cfg.min_open_confidence:
-        v.append(Violation(
-            code="LOW_CONFIDENCE",
-            message=f"{decision.symbol}: confidence {decision.confidence:.2f} "
-                    f"< {cfg.min_open_confidence}",
-        ))
+        v.append(
+            Violation(
+                code="LOW_CONFIDENCE",
+                message=f"{decision.symbol}: confidence {decision.confidence:.2f} "
+                f"< {cfg.min_open_confidence}",
+            )
+        )
     if plan.entry_zone is not None:
         lo, hi = plan.entry_zone
         tol = cfg.entry_zone_tolerance_pct
         if not (lo * (1 - tol) <= snap.mark_px <= hi * (1 + tol)):
-            v.append(Violation(
-                code="OUT_OF_ENTRY_ZONE",
-                message=f"{decision.symbol}: mark {snap.mark_px} hors zone "
-                        f"[{lo}, {hi}] (tol {tol:.2%})",
-            ))
+            v.append(
+                Violation(
+                    code="OUT_OF_ENTRY_ZONE",
+                    message=f"{decision.symbol}: mark {snap.mark_px} hors zone "
+                    f"[{lo}, {hi}] (tol {tol:.2%})",
+                )
+            )
     if plan.bias != "FLAT":
         v += _invalidation_violations(plan, snap, cfg)
     if pf.opens_today.get(decision.symbol, 0) >= cfg.max_opens_per_day_per_symbol:
-        v.append(Violation(
-            code="OVERTRADE_LIMIT",
-            message=f"{decision.symbol}: {cfg.max_opens_per_day_per_symbol} "
-                    f"OPEN déjà atteints aujourd'hui",
-        ))
+        v.append(
+            Violation(
+                code="OVERTRADE_LIMIT",
+                message=f"{decision.symbol}: {cfg.max_opens_per_day_per_symbol} "
+                f"OPEN déjà atteints aujourd'hui",
+            )
+        )
     m = pf.minutes_since_stop_out.get(decision.symbol)
     if m is not None and m < cfg.stop_out_cooldown_minutes:
-        v.append(Violation(
-            code="STOP_OUT_COOLDOWN",
-            message=f"{decision.symbol}: stop-out il y a {m:.0f} min "
-                    f"< cooldown {cfg.stop_out_cooldown_minutes:.0f} min",
-        ))
+        v.append(
+            Violation(
+                code="STOP_OUT_COOLDOWN",
+                message=f"{decision.symbol}: stop-out il y a {m:.0f} min "
+                f"< cooldown {cfg.stop_out_cooldown_minutes:.0f} min",
+            )
+        )
     return v
 
 
 # ---------------------------------------------------------------------------
 # Sizing — 100 % déterministe. Le LLM ne voit jamais ces nombres.
 # ---------------------------------------------------------------------------
+
 
 class SizedOrder(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -293,12 +362,10 @@ def size_open_order(
     pf: PortfolioContext,
     cfg: LLMLayerConfig,
 ) -> SizedOrder:
-    """Sizing R-based :
-        risk_usd  = equity × max_portfolio_risk_frac × risk_alloc × size_frac
-        qty       = risk_usd / |mark - invalidation|
-        notional  = qty × mark
-    puis caps dans l'ordre : notionnel par actif → exposition nette
-    (corrélation BTC/ETH/SOL) → plancher min_order_notional_usd.
+    """Convert the model's equity-margin allocation into notional exposure.
+
+    ``notional = total equity × size_frac × leverage`` before applying the
+    per-asset cap, net-exposure cap, and minimum-notional floor.
     """
     assert decision.action == "OPEN" and decision.direction is not None
     assert plan.invalidation_px is not None

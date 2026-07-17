@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Pure reconstruction of closed Hyperliquid position round trips.
 
 The exchange remains the source of truth for fills and realised PnL.  Local
@@ -8,13 +6,14 @@ agent's leverage, thesis and close reason.  Nothing in this module performs
 I/O, which makes rebuilding the view safe and idempotent.
 """
 
+from __future__ import annotations
+
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import hashlib
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 _EPSILON = 1e-10
 
@@ -108,25 +107,17 @@ class _LocalContext:
     ) -> "_LocalContext":
         return cls(
             intents_by_cloid={
-                cloid: item
-                for item in intents
-                if (cloid := _cloid(item.get("cloid")))
+                cloid: item for item in intents if (cloid := _cloid(item.get("cloid")))
             },
             protections_by_cloid={
-                cloid: item
-                for item in protections
-                if (cloid := _cloid(item.get("cloid")))
+                cloid: item for item in protections if (cloid := _cloid(item.get("cloid")))
             },
             cycles_by_id={
-                str(item.get("cycle_id")): item
-                for item in cycles
-                if item.get("cycle_id")
+                str(item.get("cycle_id")): item for item in cycles if item.get("cycle_id")
             },
         )
 
-    def opening_metadata(
-        self, fill: Mapping[str, Any], symbol: str
-    ) -> _OpenMetadata:
+    def opening_metadata(self, fill: Mapping[str, Any], symbol: str) -> _OpenMetadata:
         intent = self.intents_by_cloid.get(_cloid(fill.get("cloid")))
         if not intent or str(intent.get("action", "")).upper() != "OPEN":
             return _OpenMetadata()
@@ -374,26 +365,16 @@ def _finalize_trade(
     avg_entry = trade.avg_entry_px
     avg_exit = trade.exit_notional / trade.exit_size
     direction = 1 if trade.side == "LONG" else -1
-    funding = _trade_funding(
-        funding_records or (), trade.symbol, trade.opened_at, closed_at
-    )
+    funding = _trade_funding(funding_records or (), trade.symbol, trade.opened_at, closed_at)
     funding_source: Literal["hyperliquid_user_funding", "unavailable"] = (
-        "hyperliquid_user_funding"
-        if funding_records is not None
-        else "unavailable"
+        "hyperliquid_user_funding" if funding_records is not None else "unavailable"
     )
     net_pnl = trade.gross_pnl - trade.fees + funding
     initial_margin = trade.entry_notional / trade.leverage
     outcome: Literal["PROFIT", "LOSS", "BREAK_EVEN"] = (
-        "PROFIT"
-        if net_pnl > _EPSILON
-        else "LOSS"
-        if net_pnl < -_EPSILON
-        else "BREAK_EVEN"
+        "PROFIT" if net_pnl > _EPSILON else "LOSS" if net_pnl < -_EPSILON else "BREAK_EVEN"
     )
-    identity = "|".join(
-        [trade.symbol.casefold(), trade.side, *trade.fill_keys]
-    ).encode("utf-8")
+    identity = "|".join([trade.symbol.casefold(), trade.side, *trade.fill_keys]).encode("utf-8")
     trade_id = "rt_" + hashlib.sha256(identity).hexdigest()[:24]
     return TradeRecord(
         trade_id=trade_id,
@@ -422,9 +403,9 @@ def _finalize_trade(
     )
 
 
-def _decision_author(close_reason: str, source: str) -> Literal[
-    "GROK", "AUTOMATIC_RULE", "USER", "BROKER", "EXCHANGE"
-]:
+def _decision_author(
+    close_reason: str, source: str
+) -> Literal["GROK", "AUTOMATIC_RULE", "USER", "BROKER", "EXCHANGE"]:
     if close_reason == "MANUAL":
         return "USER"
     if close_reason == "LIQUIDATION":
@@ -536,9 +517,7 @@ def _is_complete_open_start(fill: Mapping[str, Any]) -> bool:
     return True
 
 
-def _cycle_explanation(
-    cycle: Mapping[str, Any], symbol: str
-) -> tuple[str | None, str | None]:
+def _cycle_explanation(cycle: Mapping[str, Any], symbol: str) -> tuple[str | None, str | None]:
     state = _mapping(cycle.get("state"))
     decision = _mapping(state.get("decision"))
     playbook = _mapping(decision.get("playbook"))
@@ -548,8 +527,7 @@ def _cycle_explanation(
         (
             _optional_text(_mapping(item).get("thesis"))
             for item in plans
-            if str(_mapping(item).get("symbol") or "").casefold()
-            == symbol.casefold()
+            if str(_mapping(item).get("symbol") or "").casefold() == symbol.casefold()
         ),
         None,
     )
@@ -559,8 +537,7 @@ def _cycle_explanation(
         (
             _optional_text(_mapping(item).get("rationale"))
             for item in decisions
-            if str(_mapping(item).get("symbol") or "").casefold()
-            == symbol.casefold()
+            if str(_mapping(item).get("symbol") or "").casefold() == symbol.casefold()
         ),
         None,
     )
@@ -571,7 +548,11 @@ def _canonical_close_reason(value: str, *, local: bool) -> str:
     normalized = " ".join(value.replace("_", " ").replace("-", " ").split()).casefold()
     if normalized in {"tp", "take profit"} or "take profit" in normalized or "target" in normalized:
         return "TP"
-    if normalized in {"sl", "stop loss"} or "stop loss" in normalized or "invalidation" in normalized:
+    if (
+        normalized in {"sl", "stop loss"}
+        or "stop loss" in normalized
+        or "invalidation" in normalized
+    ):
         return "SL"
     if "time stop" in normalized or "timeout" in normalized or "horizon" in normalized:
         return "TIME_STOP"

@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agent.domain import ApprovedOrder
 
-
 PROTECTION_NAMESPACE = uuid.UUID("d3f381ad-dd73-4ea7-8b2d-cb1a556f4fc5")
 
 
@@ -47,21 +46,21 @@ def _identity(parent_cloid: str, kind: str, index: int, trigger_px: float) -> tu
 def build_protection_specs(order: ApprovedOrder, parent_cloid: str) -> list[ProtectionSpec]:
     specs: list[ProtectionSpec] = []
     if order.place_stop_order:
-        protection_id, cloid = _identity(
-            parent_cloid, "SL", 0, order.invalidation_px
+        protection_id, cloid = _identity(parent_cloid, "SL", 0, order.invalidation_px)
+        specs.append(
+            ProtectionSpec(
+                protection_id=protection_id,
+                cloid=cloid,
+                symbol=order.symbol,
+                direction=order.direction,
+                kind="SL",
+                level_index=0,
+                trigger_px=order.invalidation_px,
+                size_fraction=1.0,
+                original_notional_usd=order.notional_usd,
+            )
         )
-        specs.append(ProtectionSpec(
-            protection_id=protection_id,
-            cloid=cloid,
-            symbol=order.symbol,
-            direction=order.direction,
-            kind="SL",
-            level_index=0,
-            trigger_px=order.invalidation_px,
-            size_fraction=1.0,
-            original_notional_usd=order.notional_usd,
-        ))
-    targets = order.targets[:len(order.take_profit_fractions)]
+    targets = order.targets[: len(order.take_profit_fractions)]
     for index, (trigger_px, fraction) in enumerate(
         zip(targets, order.take_profit_fractions),
         start=1,

@@ -38,9 +38,7 @@ def validate_timezone_name(value: str) -> str:
     try:
         ZoneInfo(normalized)
     except ZoneInfoNotFoundError as exc:
-        raise ValueError(
-            f"unknown IANA activation timezone: {normalized}"
-        ) from exc
+        raise ValueError(f"unknown IANA activation timezone: {normalized}") from exc
     return normalized
 
 
@@ -250,15 +248,9 @@ def evaluate_session_window(
     active = [
         item
         for item in windows
-        if item.start.astimezone(timezone.utc)
-        <= evaluated_at
-        < item.end.astimezone(timezone.utc)
+        if item.start.astimezone(timezone.utc) <= evaluated_at < item.end.astimezone(timezone.utc)
     ]
-    future = [
-        item
-        for item in windows
-        if item.start.astimezone(timezone.utc) > evaluated_at
-    ]
+    future = [item for item in windows if item.start.astimezone(timezone.utc) > evaluated_at]
     next_window = min(future, key=lambda item: item.start) if future else None
     active_end = max((item.end for item in active), default=None)
     basis = (
@@ -272,18 +264,10 @@ def evaluate_session_window(
         "evaluated_at": evaluated_at,
         "timezone": config.timezone,
         "active_sessions": [item.name for item in active],
-        "active_window_ends_at": (
-            active_end.astimezone(timezone.utc) if active_end else None
-        ),
-        "active_window_ends_local": (
-            active_end.astimezone(display_zone) if active_end else None
-        ),
-        "next_window_at": (
-            next_window.start.astimezone(timezone.utc) if next_window else None
-        ),
-        "next_window_local": (
-            next_window.start.astimezone(display_zone) if next_window else None
-        ),
+        "active_window_ends_at": (active_end.astimezone(timezone.utc) if active_end else None),
+        "active_window_ends_local": (active_end.astimezone(display_zone) if active_end else None),
+        "next_window_at": (next_window.start.astimezone(timezone.utc) if next_window else None),
+        "next_window_local": (next_window.start.astimezone(display_zone) if next_window else None),
         "schedule_basis": basis,
         "liquidity": filter_summary,
     }
@@ -322,9 +306,7 @@ def evaluate_activation(
     session = evaluate_session_window(config, at=at)
     if session.state != "ACTIVE" or not config.liquidity_filter_enabled:
         liquidity = dict(session.liquidity)
-        liquidity["status"] = (
-            "DISABLED" if not config.liquidity_filter_enabled else "DEFERRED"
-        )
+        liquidity["status"] = "DISABLED" if not config.liquidity_filter_enabled else "DEFERRED"
         return session.model_copy(update={"liquidity": liquidity})
 
     if observation is None:
@@ -353,12 +335,8 @@ def evaluate_activation(
         if needs_oi and asset.open_interest_usd is None:
             continue
         evaluable.append(asset)
-        if (
-            (not needs_volume or asset.volume_24h_usd >= config.liquidity_min_24h_volume_usd)
-            and (
-                not needs_oi
-                or asset.open_interest_usd >= config.liquidity_min_open_interest_usd
-            )
+        if (not needs_volume or asset.volume_24h_usd >= config.liquidity_min_24h_volume_usd) and (
+            not needs_oi or asset.open_interest_usd >= config.liquidity_min_open_interest_usd
         ):
             eligible.append(asset)
 

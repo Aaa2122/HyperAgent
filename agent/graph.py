@@ -5,7 +5,6 @@ from typing import Callable, Literal, TypedDict
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from llm_schemas import FeatureSheet
 
 from agent.config import AgentMode
 from agent.decision import DecisionProvider, RuleBasedDecisionProvider
@@ -23,6 +22,7 @@ from agent.market import MarketDataProvider
 from agent.repository import Repository
 from agent.research import NeutralResearchProvider, ResearchProvider
 from agent.strategies import Strategy, run_strategies
+from llm_schemas import FeatureSheet
 
 
 class AgentState(TypedDict, total=False):
@@ -172,13 +172,15 @@ def build_graph(deps: GraphDependencies):
                     "error_detail": str(exc)[:500],
                 },
             )
-            bundle = baseline.model_copy(update={
-                "trader": held,
-                "provider": "safe-hold",
-                "provenance": "SAFE_HOLD",
-                "status": "DEGRADED",
-                "reasons": [*baseline.reasons, reason][:8],
-            })
+            bundle = baseline.model_copy(
+                update={
+                    "trader": held,
+                    "provider": "safe-hold",
+                    "provenance": "SAFE_HOLD",
+                    "status": "DEGRADED",
+                    "reasons": [*baseline.reasons, reason][:8],
+                }
+            )
             deps.repository.add_event(
                 "DECISION_FAILED",
                 {
@@ -275,9 +277,7 @@ def build_graph(deps: GraphDependencies):
             status = CycleStatus.COMPLETED.value
         return {
             "status": status,
-            "health_status": (
-                "DEGRADED" if status == CycleStatus.DEGRADED.value else "NOMINAL"
-            ),
+            "health_status": ("DEGRADED" if status == CycleStatus.DEGRADED.value else "NOMINAL"),
             "positions": deps.execution.positions(),
         }
 

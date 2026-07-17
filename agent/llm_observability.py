@@ -25,22 +25,18 @@ def usage_payload(response: Any) -> dict[str, Any]:
     """Normalize xAI Chat/Responses usage, including exact billed USD ticks."""
     usage = _get(response, "usage", {}) or {}
     input_tokens = int(_get(usage, "input_tokens", _get(usage, "prompt_tokens", 0)) or 0)
-    output_tokens = int(
-        _get(usage, "output_tokens", _get(usage, "completion_tokens", 0)) or 0
+    output_tokens = int(_get(usage, "output_tokens", _get(usage, "completion_tokens", 0)) or 0)
+    input_details = (
+        _get(usage, "input_tokens_details", _get(usage, "prompt_tokens_details", {})) or {}
     )
-    input_details = _get(
-        usage, "input_tokens_details", _get(usage, "prompt_tokens_details", {})
-    ) or {}
-    output_details = _get(
-        usage, "output_tokens_details", _get(usage, "completion_tokens_details", {})
-    ) or {}
+    output_details = (
+        _get(usage, "output_tokens_details", _get(usage, "completion_tokens_details", {})) or {}
+    )
     ticks = int(_get(usage, "cost_in_usd_ticks", 0) or 0)
     server_usage = _get(response, "server_side_tool_usage", {}) or {}
     if not server_usage:
         server_usage = {
-            "num_server_side_tools_used": int(
-                _get(usage, "num_server_side_tools_used", 0) or 0
-            )
+            "num_server_side_tools_used": int(_get(usage, "num_server_side_tools_used", 0) or 0)
         }
     return {
         "input_tokens": input_tokens,
