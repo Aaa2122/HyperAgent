@@ -5,9 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from llm_checks import LLMLayerConfig
-from llm_schemas import FeatureSheet
-
 from agent.config import AgentMode, Settings
 from agent.db import build_engine, build_session_factory
 from agent.decision import GrokDecisionProvider
@@ -15,6 +12,8 @@ from agent.market import PaperMarketData
 from agent.repository import Repository
 from agent.research import GrokXResearchProvider, NeutralResearchProvider
 from agent.service import AgentService
+from llm_checks import LLMLayerConfig
+from llm_schemas import FeatureSheet
 
 
 def _fake_grok_provider(recorder) -> GrokDecisionProvider:
@@ -35,8 +34,7 @@ def _fake_grok_provider(recorder) -> GrokDecisionProvider:
     provider._playbook_cache = None
     provider.recorder = recorder
     provider.strategist_prompt = (
-        "{{profile_directive}} {{min_plan_conviction}} "
-        "{{ttl_min_hours}} {{ttl_max_hours}}"
+        "{{profile_directive}} {{min_plan_conviction}} {{ttl_min_hours}} {{ttl_max_hours}}"
     )
     provider.trader_prompt = "unused"
     provider.risk_review_prompt = "unused"
@@ -79,21 +77,23 @@ def test_research_cache_hit_is_realigned_to_current_universe() -> None:
     provider.cache_seconds = 900.0
     provider.recorder = lambda _: None
     provider._cache = None
-    provider.seed_cache({
-        "as_of": datetime.now(timezone.utc).isoformat(),
-        "signals": [
-            {
-                "symbol": symbol,
-                "direction": "LONG",
-                "confidence": 0.7,
-                "novelty": 0.5,
-                "manipulation_risk": 0.1,
-                "summary": f"Cached catalyst for {symbol}",
-                "sources": [f"https://example.test/{symbol.lower()}"],
-            }
-            for symbol in ("BTC", "ETH", "SOL")
-        ],
-    })
+    provider.seed_cache(
+        {
+            "as_of": datetime.now(timezone.utc).isoformat(),
+            "signals": [
+                {
+                    "symbol": symbol,
+                    "direction": "LONG",
+                    "confidence": 0.7,
+                    "novelty": 0.5,
+                    "manipulation_risk": 0.1,
+                    "summary": f"Cached catalyst for {symbol}",
+                    "sources": [f"https://example.test/{symbol.lower()}"],
+                }
+                for symbol in ("BTC", "ETH", "SOL")
+            ],
+        }
+    )
     current = PaperMarketData().snapshot().model_dump(mode="json")
     current["assets"][0]["symbol"] = "XRP"
     feature_sheet = FeatureSheet.model_validate(current)
@@ -108,9 +108,7 @@ def test_research_cache_hit_is_realigned_to_current_universe() -> None:
     assert all("source_urls" in item for item in serialized["signals"])
     assert all("sources" not in item for item in serialized["signals"])
     # Projection must not destroy still-valid cached evidence for later universes.
-    assert [item.symbol for item in provider._cache[1].signals] == [
-        "BTC", "ETH", "SOL"
-    ]
+    assert [item.symbol for item in provider._cache[1].signals] == ["BTC", "ETH", "SOL"]
 
 
 class _FailingDecisionProvider:
@@ -121,12 +119,14 @@ class _FailingDecisionProvider:
 
 
 def test_decision_fallback_exposes_safe_hold_and_degraded_cycle() -> None:
-    service = AgentService(Settings(
-        _env_file=None,
-        agent_mode=AgentMode.PAPER,
-        database_url="sqlite://",
-        llm_provider="rules",
-    ))
+    service = AgentService(
+        Settings(
+            _env_file=None,
+            agent_mode=AgentMode.PAPER,
+            database_url="sqlite://",
+            llm_provider="rules",
+        )
+    )
     service.graph_dependencies.decisions = _FailingDecisionProvider()
 
     result = service.run_cycle()
@@ -137,12 +137,7 @@ def test_decision_fallback_exposes_safe_hold_and_degraded_cycle() -> None:
     assert result["decision_provenance"] == "SAFE_HOLD"
     assert result["decision"]["status"] == "DEGRADED"
     assert result["decision"]["provenance"] == "SAFE_HOLD"
-    assert all(
-        item["action"] == "HOLD"
-        for item in result["decision"]["trader"]["decisions"]
-    )
-    assert "DECISION_PROVIDER_FAILED" in {
-        item["code"] for item in result["decision"]["reasons"]
-    }
+    assert all(item["action"] == "HOLD" for item in result["decision"]["trader"]["decisions"])
+    assert "DECISION_PROVIDER_FAILED" in {item["code"] for item in result["decision"]["reasons"]}
     assert result["decision"]["conviction_diagnostics"]
     assert service.dashboard()["cycles"][0]["status"] == "DEGRADED"

@@ -45,9 +45,7 @@ class OrderIntentRow(Base):
     __tablename__ = "order_intents"
 
     intent_id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    cycle_id: Mapped[str] = mapped_column(
-        ForeignKey("cycles.cycle_id"), nullable=False, index=True
-    )
+    cycle_id: Mapped[str] = mapped_column(ForeignKey("cycles.cycle_id"), nullable=False, index=True)
     decision_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     cloid: Mapped[str] = mapped_column(String(34), nullable=False, unique=True)
     symbol: Mapped[str] = mapped_column(String(12), nullable=False)

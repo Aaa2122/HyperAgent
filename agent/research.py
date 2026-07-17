@@ -5,17 +5,18 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Protocol
 
-from llm_schemas import FeatureSheet
-
 from agent.domain import ResearchBundle, ResearchSignal
 from agent.llm_observability import llm_record
+from llm_schemas import FeatureSheet
 
 
 class ResearchProvider(Protocol):
     name: str
 
     def research(
-        self, feature_sheet: FeatureSheet, cycle_id: str | None = None,
+        self,
+        feature_sheet: FeatureSheet,
+        cycle_id: str | None = None,
         allow_refresh: bool = True,
     ) -> ResearchBundle: ...
 
@@ -23,8 +24,9 @@ class ResearchProvider(Protocol):
 class NeutralResearchProvider:
     name = "disabled"
 
-    def research(self, feature_sheet: FeatureSheet, cycle_id: str | None = None,
-                 allow_refresh: bool = True) -> ResearchBundle:
+    def research(
+        self, feature_sheet: FeatureSheet, cycle_id: str | None = None, allow_refresh: bool = True
+    ) -> ResearchBundle:
         del cycle_id, allow_refresh
         return ResearchBundle(
             as_of=datetime.now(timezone.utc),
@@ -60,24 +62,30 @@ class GrokXResearchProvider:
             self._cache = (time.monotonic(), candidate)
 
     @staticmethod
-    def _align_to_universe(
-        bundle: ResearchBundle, feature_sheet: FeatureSheet
-    ) -> ResearchBundle:
+    def _align_to_universe(bundle: ResearchBundle, feature_sheet: FeatureSheet) -> ResearchBundle:
         """Keep cache output ordered and exactly scoped to the current universe."""
         by_symbol = {item.symbol: item for item in bundle.signals}
-        return bundle.model_copy(update={"signals": [
-            by_symbol.get(asset.symbol, ResearchSignal(
-                symbol=asset.symbol,
-                summary=(
-                    "No cached research exists for this current-universe asset; "
-                    "event conviction remains neutral."
-                ),
-            ))
-            for asset in feature_sheet.assets
-        ]})
+        return bundle.model_copy(
+            update={
+                "signals": [
+                    by_symbol.get(
+                        asset.symbol,
+                        ResearchSignal(
+                            symbol=asset.symbol,
+                            summary=(
+                                "No cached research exists for this current-universe asset; "
+                                "event conviction remains neutral."
+                            ),
+                        ),
+                    )
+                    for asset in feature_sheet.assets
+                ]
+            }
+        )
 
-    def research(self, feature_sheet: FeatureSheet, cycle_id: str | None = None,
-                 allow_refresh: bool = True) -> ResearchBundle:
+    def research(
+        self, feature_sheet: FeatureSheet, cycle_id: str | None = None, allow_refresh: bool = True
+    ) -> ResearchBundle:
         now = time.monotonic()
         if self._cache and now - self._cache[0] < self.cache_seconds:
             aligned = self._align_to_universe(self._cache[1], feature_sheet)
@@ -125,16 +133,29 @@ class GrokXResearchProvider:
             raise RuntimeError("Grok X research returned no structured payload")
         bundle = self._align_to_universe(bundle, feature_sheet)
         if self.recorder:
-            self.recorder(llm_record(
-                response, cycle_id=cycle_id, stage="research", model=self.model,
-                latency_ms=int((time.monotonic() - started) * 1000),
-                prompt=prompt, result=bundle,
-            ))
+            self.recorder(
+                llm_record(
+                    response,
+                    cycle_id=cycle_id,
+                    stage="research",
+                    model=self.model,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    prompt=prompt,
+                    result=bundle,
+                )
+            )
         self._cache = (time.monotonic(), bundle)
         return bundle
 
     def _record_skip(self, cycle_id: str | None, reason: str) -> None:
         if self.recorder:
-            self.recorder({"cycle_id": cycle_id, "stage": "research", "provider": "xai",
-                           "model": self.model, "status": "SKIPPED",
-                           "skipped_reason": reason})
+            self.recorder(
+                {
+                    "cycle_id": cycle_id,
+                    "stage": "research",
+                    "provider": "xai",
+                    "model": self.model,
+                    "status": "SKIPPED",
+                    "skipped_reason": reason,
+                }
+            )

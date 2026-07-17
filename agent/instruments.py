@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Any, Iterable, Protocol
 from zoneinfo import ZoneInfo
 
-
 XYZ_US_EQUITY_SYMBOLS = (
     "TSLA",
     "NVDA",
@@ -184,9 +183,7 @@ class InstrumentRegistrySnapshot:
 
     def get(self, symbol: str) -> Instrument | None:
         normalized = symbol.strip().upper()
-        return next(
-            (item for item in self.instruments if item.symbol == normalized), None
-        )
+        return next((item for item in self.instruments if item.symbol == normalized), None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -337,9 +334,7 @@ class Hip3InstrumentRegistry:
         status_reason = "DEX_AND_METADATA_DISCOVERED"
         warnings: list[str] = []
         try:
-            raw_status = self.client.post(
-                {"type": "perpDexStatus", "dex": self.dex_name}
-            )
+            raw_status = self.client.post({"type": "perpDexStatus", "dex": self.dex_name})
             if isinstance(raw_status, dict):
                 total_net_deposit = _finite_float(raw_status.get("totalNetDeposit"))
             else:
@@ -367,9 +362,7 @@ class Hip3InstrumentRegistry:
         for index, raw_instrument in enumerate(universe):
             if not isinstance(raw_instrument, dict):
                 continue
-            normalized_symbol = _underlying_symbol(
-                raw_instrument.get("name"), self.dex_name
-            )
+            normalized_symbol = _underlying_symbol(raw_instrument.get("name"), self.dex_name)
             if normalized_symbol not in self.symbols:
                 continue
             if normalized_symbol in discovered:
@@ -433,15 +426,11 @@ class Hip3InstrumentRegistry:
             mark_px=_positive_float(context.get("markPx")) if context else None,
             mid_px=_positive_float(context.get("midPx")) if context else None,
             oracle_px=_positive_float(context.get("oraclePx")) if context else None,
-            previous_day_px=(
-                _positive_float(context.get("prevDayPx")) if context else None
-            ),
+            previous_day_px=(_positive_float(context.get("prevDayPx")) if context else None),
             day_notional_volume_usd=(
                 _non_negative_float(context.get("dayNtlVlm")) if context else None
             ),
-            open_interest=(
-                _non_negative_float(context.get("openInterest")) if context else None
-            ),
+            open_interest=(_non_negative_float(context.get("openInterest")) if context else None),
             funding_rate=_finite_float(context.get("funding")) if context else None,
             size_decimals=_non_negative_int(metadata.get("szDecimals")),
             max_leverage=_positive_int(metadata.get("maxLeverage")),

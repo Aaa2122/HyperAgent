@@ -7,6 +7,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Protocol
 
+from agent.consequence import simulate_consequences
+from agent.domain import (
+    ConvictionDiagnostic,
+    DecisionBundle,
+    PromptPosition,
+    ResearchBundle,
+    ResearchSignal,
+    StrategySignal,
+    StructuredReason,
+)
+from agent.llm_observability import llm_failure_record, llm_record
 from llm_checks import LLMLayerConfig
 from llm_schemas import (
     AssetDecision,
@@ -18,18 +29,6 @@ from llm_schemas import (
     PlaybookRecord,
     TraderOutput,
 )
-
-from agent.domain import (
-    ConvictionDiagnostic,
-    DecisionBundle,
-    PromptPosition,
-    ResearchBundle,
-    ResearchSignal,
-    StrategySignal,
-    StructuredReason,
-)
-from agent.consequence import simulate_consequences
-from agent.llm_observability import llm_failure_record, llm_record
 
 
 class DecisionProvider(Protocol):
@@ -89,127 +88,145 @@ def build_conviction_diagnostics(
     for plan in playbook.payload.plans:
         reasons: list[StructuredReason] = []
         if plan.bias == "FLAT":
-            reasons.append(StructuredReason(
-                code="PLAN_IS_FLAT",
-                message="The strategist found no directional plan for this asset.",
-                impact="BLOCKS",
-                evidence={"bias": plan.bias},
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="PLAN_IS_FLAT",
+                    message="The strategist found no directional plan for this asset.",
+                    impact="BLOCKS",
+                    evidence={"bias": plan.bias},
+                )
+            )
         if plan.conviction < min_plan_conviction:
-            reasons.append(StructuredReason(
-                code="BELOW_PLAN_CONVICTION_THRESHOLD",
-                message="Plan conviction is below the configured action threshold.",
-                impact="BLOCKS",
-                evidence={
-                    "conviction": plan.conviction,
-                    "threshold": min_plan_conviction,
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="BELOW_PLAN_CONVICTION_THRESHOLD",
+                    message="Plan conviction is below the configured action threshold.",
+                    impact="BLOCKS",
+                    evidence={
+                        "conviction": plan.conviction,
+                        "threshold": min_plan_conviction,
+                    },
+                )
+            )
 
         technical = [item for item in signals if item.symbol == plan.symbol]
         directional = [item for item in technical if item.direction != "FLAT"]
         directions = sorted({item.direction for item in directional})
         if not directional:
-            reasons.append(StructuredReason(
-                code="NO_DIRECTIONAL_TECHNICAL_EDGE",
-                message="Technical advisors provide no directional confirmation.",
-                impact="REDUCES",
-                evidence={
-                    "advisor_count": len(technical),
-                    "scores": [round(item.score, 4) for item in technical],
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="NO_DIRECTIONAL_TECHNICAL_EDGE",
+                    message="Technical advisors provide no directional confirmation.",
+                    impact="REDUCES",
+                    evidence={
+                        "advisor_count": len(technical),
+                        "scores": [round(item.score, 4) for item in technical],
+                    },
+                )
+            )
         elif len(directions) > 1:
-            reasons.append(StructuredReason(
-                code="CONFLICTING_TECHNICAL_SIGNALS",
-                message="Technical advisors disagree on direction.",
-                impact="REDUCES",
-                evidence={"directions": directions},
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="CONFLICTING_TECHNICAL_SIGNALS",
+                    message="Technical advisors disagree on direction.",
+                    impact="REDUCES",
+                    evidence={"directions": directions},
+                )
+            )
         elif plan.bias != "FLAT" and directions[0] == plan.bias:
-            reasons.append(StructuredReason(
-                code="TECHNICAL_ALIGNMENT",
-                message="Directional technical signals support the plan bias.",
-                impact="SUPPORTS",
-                evidence={"direction": directions[0]},
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="TECHNICAL_ALIGNMENT",
+                    message="Directional technical signals support the plan bias.",
+                    impact="SUPPORTS",
+                    evidence={"direction": directions[0]},
+                )
+            )
         elif plan.bias != "FLAT":
-            reasons.append(StructuredReason(
-                code="TECHNICAL_PLAN_MISMATCH",
-                message="Technical direction does not support the plan bias.",
-                impact="REDUCES",
-                evidence={"technical_direction": directions[0], "plan_bias": plan.bias},
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="TECHNICAL_PLAN_MISMATCH",
+                    message="Technical direction does not support the plan bias.",
+                    impact="REDUCES",
+                    evidence={"technical_direction": directions[0], "plan_bias": plan.bias},
+                )
+            )
 
         event = research_by_symbol.get(plan.symbol)
         if event is None or not event.source_urls:
-            reasons.append(StructuredReason(
-                code="NO_VERIFIED_CATALYST",
-                message="No cited external source confirms a market catalyst.",
-                impact="REDUCES",
-                evidence={
-                    "research_confidence": event.confidence if event else 0.0,
-                    "source_count": len(event.source_urls) if event else 0,
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="NO_VERIFIED_CATALYST",
+                    message="No cited external source confirms a market catalyst.",
+                    impact="REDUCES",
+                    evidence={
+                        "research_confidence": event.confidence if event else 0.0,
+                        "source_count": len(event.source_urls) if event else 0,
+                    },
+                )
+            )
         elif event.direction == "FLAT" or event.confidence == 0:
-            reasons.append(StructuredReason(
-                code="RESEARCH_SIGNAL_NEUTRAL",
-                message="Verified research does not provide a directional event edge.",
-                impact="REDUCES",
-                evidence={
-                    "direction": event.direction,
-                    "confidence": event.confidence,
-                    "source_count": len(event.source_urls),
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="RESEARCH_SIGNAL_NEUTRAL",
+                    message="Verified research does not provide a directional event edge.",
+                    impact="REDUCES",
+                    evidence={
+                        "direction": event.direction,
+                        "confidence": event.confidence,
+                        "source_count": len(event.source_urls),
+                    },
+                )
+            )
         elif plan.bias != "FLAT" and event.direction != plan.bias:
-            reasons.append(StructuredReason(
-                code="RESEARCH_PLAN_CONFLICT",
-                message="External research points against the plan bias.",
-                impact="REDUCES",
-                evidence={
-                    "research_direction": event.direction,
-                    "plan_bias": plan.bias,
-                    "confidence": event.confidence,
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="RESEARCH_PLAN_CONFLICT",
+                    message="External research points against the plan bias.",
+                    impact="REDUCES",
+                    evidence={
+                        "research_direction": event.direction,
+                        "plan_bias": plan.bias,
+                        "confidence": event.confidence,
+                    },
+                )
+            )
         elif plan.bias != "FLAT":
-            reasons.append(StructuredReason(
-                code="RESEARCH_ALIGNMENT",
-                message="External research supports the plan bias.",
-                impact="SUPPORTS",
-                evidence={
-                    "direction": event.direction,
-                    "confidence": event.confidence,
-                    "source_count": len(event.source_urls),
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="RESEARCH_ALIGNMENT",
+                    message="External research supports the plan bias.",
+                    impact="SUPPORTS",
+                    evidence={
+                        "direction": event.direction,
+                        "confidence": event.confidence,
+                        "source_count": len(event.source_urls),
+                    },
+                )
+            )
         if event is not None and event.manipulation_risk > event.confidence:
-            reasons.append(StructuredReason(
-                code="MANIPULATION_RISK_DOMINATES",
-                message="Manipulation risk exceeds research confidence.",
-                impact="REDUCES",
-                evidence={
-                    "manipulation_risk": event.manipulation_risk,
-                    "research_confidence": event.confidence,
-                },
-            ))
+            reasons.append(
+                StructuredReason(
+                    code="MANIPULATION_RISK_DOMINATES",
+                    message="Manipulation risk exceeds research confidence.",
+                    impact="REDUCES",
+                    evidence={
+                        "manipulation_risk": event.manipulation_risk,
+                        "research_confidence": event.confidence,
+                    },
+                )
+            )
 
-        level = (
-            "LOW" if plan.conviction < 0.5
-            else "HIGH" if plan.conviction >= 0.8
-            else "MODERATE"
+        level = "LOW" if plan.conviction < 0.5 else "HIGH" if plan.conviction >= 0.8 else "MODERATE"
+        diagnostics.append(
+            ConvictionDiagnostic(
+                symbol=plan.symbol,
+                conviction=plan.conviction,
+                level=level,
+                actionable=(plan.bias != "FLAT" and plan.conviction >= min_plan_conviction),
+                reasons=reasons[:8],
+            )
         )
-        diagnostics.append(ConvictionDiagnostic(
-            symbol=plan.symbol,
-            conviction=plan.conviction,
-            level=level,
-            actionable=(
-                plan.bias != "FLAT" and plan.conviction >= min_plan_conviction
-            ),
-            reasons=reasons[:8],
-        ))
     return diagnostics
 
 
@@ -240,10 +257,7 @@ class RuleBasedDecisionProvider:
             event = research_by_symbol.get(asset.symbol, ResearchSignal(symbol=asset.symbol))
             event_sign = {"LONG": 1.0, "SHORT": -1.0, "FLAT": 0.0}[event.direction]
             event_score = (
-                event_sign
-                * event.confidence
-                * event.novelty
-                * (1.0 - event.manipulation_risk)
+                event_sign * event.confidence * event.novelty * (1.0 - event.manipulation_risk)
             )
             raw[asset.symbol] = 0.85 * technical_score + 0.15 * event_score
 
@@ -342,12 +356,14 @@ class RuleBasedDecisionProvider:
             provider=self.name,
             provenance="RULE_FALLBACK",
             status="NOMINAL",
-            reasons=[StructuredReason(
-                code="DETERMINISTIC_RULE_PROVIDER",
-                message="The configured deterministic rule provider produced this decision.",
-                impact="NEUTRAL",
-                evidence={"provider": self.name},
-            )],
+            reasons=[
+                StructuredReason(
+                    code="DETERMINISTIC_RULE_PROVIDER",
+                    message="The configured deterministic rule provider produced this decision.",
+                    impact="NEUTRAL",
+                    evidence={"provider": self.name},
+                )
+            ],
             conviction_diagnostics=build_conviction_diagnostics(
                 playbook,
                 signals,
@@ -408,8 +424,7 @@ class GrokDecisionProvider:
                 "low turnover over exploration."
             )
         return (
-            self.strategist_prompt
-            .replace("{{profile_directive}}", directive)
+            self.strategist_prompt.replace("{{profile_directive}}", directive)
             .replace("{{min_plan_conviction}}", f"{self.config.min_plan_conviction:g}")
             .replace("{{ttl_min_hours}}", str(self.config.playbook_ttl_min_hours))
             .replace("{{ttl_max_hours}}", str(self.config.playbook_ttl_max_hours))
@@ -444,8 +459,7 @@ class GrokDecisionProvider:
                 "multi-signal alignment."
             )
         return (
-            self.trader_prompt
-            .replace("{{profile_directive}}", directive)
+            self.trader_prompt.replace("{{profile_directive}}", directive)
             .replace("{{min_open_confidence}}", f"{self.config.min_open_confidence:g}")
             .replace("{{max_leverage}}", str(self.config.max_leverage))
         )
@@ -477,49 +491,64 @@ class GrokDecisionProvider:
         ):
             playbook = cached
             provenance = "CACHE"
-            decision_reasons.append(StructuredReason(
-                code="STRATEGIST_CACHE_HIT",
-                message="The current-universe strategist playbook was reused from cache.",
-                impact="NEUTRAL",
-                evidence={"cache_age_seconds": round(cache_age, 3)},
-            ))
+            decision_reasons.append(
+                StructuredReason(
+                    code="STRATEGIST_CACHE_HIT",
+                    message="The current-universe strategist playbook was reused from cache.",
+                    impact="NEUTRAL",
+                    evidence={"cache_age_seconds": round(cache_age, 3)},
+                )
+            )
             self._record_skip(cycle_id, "strategist", "CACHE_HIT")
         elif not allow_strategist_refresh and cached is not None:
             provenance = "CACHE"
             cached_by_symbol = {item.symbol: item for item in cached.payload.plans}
             missing_symbols = sorted(current_symbols - set(cached_by_symbol))
-            aligned_payload = cached.payload.model_copy(update={"plans": [
-                cached_by_symbol.get(asset.symbol, AssetPlan(
-                    symbol=asset.symbol,
-                    bias="FLAT",
-                    conviction=0.0,
-                    thesis=(
-                        "No cached strategist plan exists for this selected market; "
-                        "remain flat until refresh is allowed."
-                    ),
-                    risk_alloc=0.0,
-                ))
-                for asset in feature_sheet.assets
-            ]})
-            playbook = cached.model_copy(update={
-                "payload": aligned_payload,
-                "feature_sheet_hash": _feature_hash(feature_sheet),
-            })
+            aligned_payload = cached.payload.model_copy(
+                update={
+                    "plans": [
+                        cached_by_symbol.get(
+                            asset.symbol,
+                            AssetPlan(
+                                symbol=asset.symbol,
+                                bias="FLAT",
+                                conviction=0.0,
+                                thesis=(
+                                    "No cached strategist plan exists for this selected market; "
+                                    "remain flat until refresh is allowed."
+                                ),
+                                risk_alloc=0.0,
+                            ),
+                        )
+                        for asset in feature_sheet.assets
+                    ]
+                }
+            )
+            playbook = cached.model_copy(
+                update={
+                    "payload": aligned_payload,
+                    "feature_sheet_hash": _feature_hash(feature_sheet),
+                }
+            )
             if missing_symbols:
                 decision_status = "DEGRADED"
-                decision_reasons.append(StructuredReason(
-                    code="CACHE_UNIVERSE_REALIGNED",
-                    message="Cached strategist coverage differed from the current universe.",
-                    impact="BLOCKS",
-                    evidence={"missing_symbols": missing_symbols},
-                ))
+                decision_reasons.append(
+                    StructuredReason(
+                        code="CACHE_UNIVERSE_REALIGNED",
+                        message="Cached strategist coverage differed from the current universe.",
+                        impact="BLOCKS",
+                        evidence={"missing_symbols": missing_symbols},
+                    )
+                )
             else:
-                decision_reasons.append(StructuredReason(
-                    code="STRATEGIST_REFRESH_DISABLED",
-                    message="The current strategist playbook was reused while refresh was disabled.",
-                    impact="NEUTRAL",
-                    evidence={"cache_age_seconds": round(cache_age or 0.0, 3)},
-                ))
+                decision_reasons.append(
+                    StructuredReason(
+                        code="STRATEGIST_REFRESH_DISABLED",
+                        message="The current strategist playbook was reused while refresh was disabled.",
+                        impact="NEUTRAL",
+                        evidence={"cache_age_seconds": round(cache_age or 0.0, 3)},
+                    )
+                )
             self._record_skip(cycle_id, "strategist", "CAPITAL_CONSTRAINED")
         else:
             strategist_input = {
@@ -550,47 +579,63 @@ class GrokDecisionProvider:
                 )
                 strategist = strategist_response.choices[0].message.parsed
                 if strategist is None:
-                    raise RuntimeError(
-                        "Grok strategist returned no structured output"
-                    )
+                    raise RuntimeError("Grok strategist returned no structured output")
             except Exception as exc:
                 if self.recorder:
-                    self.recorder(llm_failure_record(
+                    self.recorder(
+                        llm_failure_record(
+                            strategist_response,
+                            cycle_id=cycle_id,
+                            stage="strategist",
+                            model=self.model,
+                            latency_ms=int((time.monotonic() - started) * 1000),
+                            prompt={"system": strategist_prompt, "input": strategist_input},
+                            error=exc,
+                            reason_code="STRUCTURED_OUTPUT_PARSE_FAILED",
+                        )
+                    )
+                raise
+            plans_by_symbol = {item.symbol: item for item in strategist.plans}
+            missing_symbols = sorted(current_symbols - set(plans_by_symbol))
+            strategist = strategist.model_copy(
+                update={
+                    "plans": [
+                        plans_by_symbol.get(
+                            asset.symbol,
+                            AssetPlan(
+                                symbol=asset.symbol,
+                                bias="FLAT",
+                                conviction=0.0,
+                                thesis="No strategist plan was returned for this selected market; remain flat.",
+                                risk_alloc=0.0,
+                            ),
+                        )
+                        for asset in feature_sheet.assets
+                    ]
+                }
+            )
+            if missing_symbols:
+                decision_status = "DEGRADED"
+                decision_reasons.append(
+                    StructuredReason(
+                        code="INCOMPLETE_STRATEGIST_COVERAGE",
+                        message="Missing strategist plans were replaced by fail-closed FLAT plans.",
+                        impact="BLOCKS",
+                        evidence={"missing_symbols": missing_symbols},
+                    )
+                )
+            if self.recorder:
+                self.recorder(
+                    llm_record(
                         strategist_response,
                         cycle_id=cycle_id,
                         stage="strategist",
                         model=self.model,
                         latency_ms=int((time.monotonic() - started) * 1000),
                         prompt={"system": strategist_prompt, "input": strategist_input},
-                        error=exc,
-                        reason_code="STRUCTURED_OUTPUT_PARSE_FAILED",
-                    ))
-                raise
-            plans_by_symbol = {item.symbol: item for item in strategist.plans}
-            missing_symbols = sorted(current_symbols - set(plans_by_symbol))
-            strategist = strategist.model_copy(update={"plans": [
-                plans_by_symbol.get(asset.symbol, AssetPlan(
-                    symbol=asset.symbol, bias="FLAT", conviction=0.0,
-                    thesis="No strategist plan was returned for this selected market; remain flat.",
-                    risk_alloc=0.0,
-                ))
-                for asset in feature_sheet.assets
-            ]})
-            if missing_symbols:
-                decision_status = "DEGRADED"
-                decision_reasons.append(StructuredReason(
-                    code="INCOMPLETE_STRATEGIST_COVERAGE",
-                    message="Missing strategist plans were replaced by fail-closed FLAT plans.",
-                    impact="BLOCKS",
-                    evidence={"missing_symbols": missing_symbols},
-                ))
-            if self.recorder:
-                self.recorder(llm_record(
-                    strategist_response, cycle_id=cycle_id, stage="strategist",
-                    model=self.model, latency_ms=int((time.monotonic() - started) * 1000),
-                    prompt={"system": strategist_prompt, "input": strategist_input},
-                    result=strategist,
-                ))
+                        result=strategist,
+                    )
+                )
             playbook = PlaybookRecord(
                 playbook_id=f"pb-{_feature_hash(feature_sheet)[:16]}",
                 version=(cached.version + 1 if cached is not None else 1),
@@ -625,19 +670,34 @@ class GrokDecisionProvider:
         if trader is None:
             raise RuntimeError("Grok trader returned no structured output")
         decisions_by_symbol = {item.symbol: item for item in trader.decisions}
-        trader = trader.model_copy(update={"decisions": [
-            decisions_by_symbol.get(asset.symbol, AssetDecision(
-                symbol=asset.symbol, action="HOLD", confidence=0.0,
-                rationale="No trader decision was returned for this selected market.",
-            ))
-            for asset in feature_sheet.assets
-        ]})
+        trader = trader.model_copy(
+            update={
+                "decisions": [
+                    decisions_by_symbol.get(
+                        asset.symbol,
+                        AssetDecision(
+                            symbol=asset.symbol,
+                            action="HOLD",
+                            confidence=0.0,
+                            rationale="No trader decision was returned for this selected market.",
+                        ),
+                    )
+                    for asset in feature_sheet.assets
+                ]
+            }
+        )
         if self.recorder:
-            self.recorder(llm_record(
-                trader_response, cycle_id=cycle_id, stage="trader", model=self.model,
-                latency_ms=int((time.monotonic() - started) * 1000),
-                prompt={"system": trader_prompt, "input": trader_input}, result=trader,
-            ))
+            self.recorder(
+                llm_record(
+                    trader_response,
+                    cycle_id=cycle_id,
+                    stage="trader",
+                    model=self.model,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    prompt={"system": trader_prompt, "input": trader_input},
+                    result=trader,
+                )
+            )
         consequences = simulate_consequences(
             trader, playbook, feature_sheet, positions, float(equity_usd or 0)
         )
@@ -662,22 +722,28 @@ class GrokDecisionProvider:
             if review is None:
                 raise RuntimeError("Grok risk review returned no structured output")
             if self.recorder:
-                self.recorder(llm_record(
-                    review_response, cycle_id=cycle_id, stage="risk_review",
-                    model=self.model,
-                    latency_ms=int((time.monotonic() - started) * 1000),
-                    prompt={"system": self.risk_review_prompt, "input": review_input},
-                    result=review,
-                ))
-        else:
-            review = FinalRiskReview(reviews=[
-                DecisionRiskReview(
-                    symbol=item.symbol,
-                    decision="KEEP_AS_IS",
-                    reason="No risk-increasing proposal requires consequence revision.",
+                self.recorder(
+                    llm_record(
+                        review_response,
+                        cycle_id=cycle_id,
+                        stage="risk_review",
+                        model=self.model,
+                        latency_ms=int((time.monotonic() - started) * 1000),
+                        prompt={"system": self.risk_review_prompt, "input": review_input},
+                        result=review,
+                    )
                 )
-                for item in trader.decisions
-            ])
+        else:
+            review = FinalRiskReview(
+                reviews=[
+                    DecisionRiskReview(
+                        symbol=item.symbol,
+                        decision="KEEP_AS_IS",
+                        reason="No risk-increasing proposal requires consequence revision.",
+                    )
+                    for item in trader.decisions
+                ]
+            )
             self._record_skip(cycle_id, "risk_review", "NO_RISK_INCREASING_PROPOSAL")
 
         initial_by_symbol = {item.symbol: item for item in trader.decisions}
@@ -691,12 +757,16 @@ class GrokDecisionProvider:
             elif risk_item.decision == "ADJUST" and risk_item.adjusted_decision:
                 final_decisions.append(risk_item.adjusted_decision)
             else:
-                final_decisions.append(AssetDecision(
-                    symbol=symbol,
-                    action="HOLD",
-                    confidence=initial_decision.confidence,
-                    rationale=f"Final consequence review canceled proposal: {risk_item.reason}"[:300],
-                ))
+                final_decisions.append(
+                    AssetDecision(
+                        symbol=symbol,
+                        action="HOLD",
+                        confidence=initial_decision.confidence,
+                        rationale=f"Final consequence review canceled proposal: {risk_item.reason}"[
+                            :300
+                        ],
+                    )
+                )
         final_trader = trader.model_copy(update={"decisions": final_decisions})
         return DecisionBundle(
             playbook=playbook,
@@ -718,9 +788,16 @@ class GrokDecisionProvider:
 
     def _record_skip(self, cycle_id: str | None, stage: str, reason: str) -> None:
         if self.recorder:
-            self.recorder({"cycle_id": cycle_id, "stage": stage, "provider": "xai",
-                           "model": self.model, "status": "SKIPPED",
-                           "skipped_reason": reason})
+            self.recorder(
+                {
+                    "cycle_id": cycle_id,
+                    "stage": stage,
+                    "provider": "xai",
+                    "model": self.model,
+                    "status": "SKIPPED",
+                    "skipped_reason": reason,
+                }
+            )
 
     @staticmethod
     def _prompt_positions(
@@ -748,9 +825,7 @@ class GrokDecisionProvider:
                     invalidation_px=invalidation,
                     notional_usd=float(position["notional_usd"]),
                     leverage=int(position.get("leverage", 1)),
-                    unrealized_pnl_usd=float(
-                        position.get("unrealized_pnl_usd", 0)
-                    ),
+                    unrealized_pnl_usd=float(position.get("unrealized_pnl_usd", 0)),
                     roe_pct=float(position.get("roe_pct", 0)),
                     unrealized_r=unrealized_r,
                     distance_to_invalidation_atr=abs(mark - invalidation) / asset.atr_4h,

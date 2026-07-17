@@ -152,9 +152,7 @@ def test_decision_key_is_at_most_once() -> None:
 
 
 def test_experimental_profile_is_visible_on_dashboard() -> None:
-    service = AgentService(
-        settings(trading_profile="experimental", max_model_leverage=5)
-    )
+    service = AgentService(settings(trading_profile="experimental", max_model_leverage=5))
     dashboard = service.dashboard()
     assert dashboard["trading_profile"] == "experimental"
     assert dashboard["max_model_leverage"] == 5
@@ -202,9 +200,7 @@ def test_startup_recovers_cycles_interrupted_by_a_previous_process(tmp_path) -> 
     assert cycle["finished_at"] is not None
     assert cycle["error"].startswith("PROCESS_INTERRUPTED")
     assert cycle["state"]["incidents"][-1]["type"] == "PROCESS_INTERRUPTED"
-    assert recovered.dashboard()["events"][0]["event_type"] == (
-        "INTERRUPTED_CYCLES_RECOVERED"
-    )
+    assert recovered.dashboard()["events"][0]["event_type"] == ("INTERRUPTED_CYCLES_RECOVERED")
 
 
 def test_api_cycle_and_dashboard() -> None:

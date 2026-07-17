@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from llm_schemas import AssetFeatures, FeatureSheet
-
 from agent.domain import StrategySignal
+from llm_schemas import AssetFeatures, FeatureSheet
 
 
 class Strategy(Protocol):
@@ -17,15 +16,9 @@ class MomentumStrategy:
     strategy_id = "naive_momentum"
 
     def evaluate(self, asset: AssetFeatures) -> StrategySignal:
-        long_setup = (
-            asset.ret_4h_pct > 0.8
-            and asset.adx_4h >= 24
-            and asset.donchian_pos_4h >= 0.75
-        )
+        long_setup = asset.ret_4h_pct > 0.8 and asset.adx_4h >= 24 and asset.donchian_pos_4h >= 0.75
         short_setup = (
-            asset.ret_4h_pct < -0.8
-            and asset.adx_4h >= 24
-            and asset.donchian_pos_4h <= 0.25
+            asset.ret_4h_pct < -0.8 and asset.adx_4h >= 24 and asset.donchian_pos_4h <= 0.25
         )
         if long_setup:
             score = min(1.0, 0.45 + asset.adx_4h / 100 + asset.ret_4h_pct / 10)
@@ -65,14 +58,9 @@ class MeanReversionStrategy:
             direction=direction,
             score=score,
             conviction=abs(score),
-            rationale=(
-                f"distance EMA20={asset.dist_ema20_4h_atr:.2f} ATR, "
-                f"ADX={asset.adx_4h:.1f}"
-            ),
+            rationale=(f"distance EMA20={asset.dist_ema20_4h_atr:.2f} ATR, ADX={asset.adx_4h:.1f}"),
         )
 
 
-def run_strategies(
-    feature_sheet: FeatureSheet, strategies: list[Strategy]
-) -> list[StrategySignal]:
+def run_strategies(feature_sheet: FeatureSheet, strategies: list[Strategy]) -> list[StrategySignal]:
     return [strategy.evaluate(asset) for asset in feature_sheet.assets for strategy in strategies]

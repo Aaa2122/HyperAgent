@@ -4,6 +4,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
+from agent.domain import ApprovedOrder, DecisionBundle, GuardrailVerdict
 from llm_checks import (
     AssetSnapshot,
     LLMLayerConfig,
@@ -14,8 +15,6 @@ from llm_checks import (
     size_open_order,
 )
 from llm_schemas import FeatureSheet
-
-from agent.domain import ApprovedOrder, DecisionBundle, GuardrailVerdict
 
 
 class GuardrailEngine:

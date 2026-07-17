@@ -19,9 +19,7 @@ def test_hyperliquid_snapshot_and_account_are_read_only_and_typed() -> None:
         result = []
         phase = {"BTC": 0.0, "ETH": 0.4, "SOL": 0.8}[symbol]
         for index in range(count):
-            px = bases[symbol] * (
-                0.90 + index * 0.0005 + 0.002 * math.sin(index / 4 + phase)
-            )
+            px = bases[symbol] * (0.90 + index * 0.0005 + 0.002 * math.sin(index / 4 + phase))
             result.append(
                 {
                     "t": now_ms - (count - index) * interval_ms,
@@ -92,9 +90,7 @@ def test_hyperliquid_snapshot_and_account_are_read_only_and_typed() -> None:
             return httpx.Response(
                 200,
                 json={
-                    "balances": [
-                        {"coin": "USDC", "token": 0, "total": "1000", "hold": "50"}
-                    ],
+                    "balances": [{"coin": "USDC", "token": 0, "total": "1000", "hold": "50"}],
                     "tokenToAvailableAfterMaintenance": [[0, "900"]],
                 },
             )

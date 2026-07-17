@@ -9,10 +9,9 @@ from typing import Any
 
 import httpx
 
-from llm_schemas import FeatureSheet
 from agent.instruments import UsEquitySessionClock, UsEquitySessionStatus
 from agent.symbols import CORE_SYMBOLS, HIP3_US_SYMBOLS
-
+from llm_schemas import FeatureSheet
 
 SYMBOLS = CORE_SYMBOLS
 
@@ -58,9 +57,7 @@ class HyperliquidInfoClient:
             raise ValueError("invalid metaAndAssetCtxs response")
         return payload[0], payload[1]
 
-    def candles(
-        self, coin: str, interval: str, start_ms: int, end_ms: int
-    ) -> list[dict[str, Any]]:
+    def candles(self, coin: str, interval: str, start_ms: int, end_ms: int) -> list[dict[str, Any]]:
         result = self.post(
             {
                 "type": "candleSnapshot",
@@ -106,9 +103,7 @@ class HyperliquidInfoClient:
 
     def user_fills(self, user: str) -> list[dict]:
         """Recent account fills, including TP/SL cloids and realized P&L."""
-        result = self.post(
-            {"type": "userFills", "user": user, "aggregateByTime": True}
-        )
+        result = self.post({"type": "userFills", "user": user, "aggregateByTime": True})
         return result if isinstance(result, list) else []
 
     def clearinghouse_state(self, user: str) -> dict[str, Any]:
@@ -192,7 +187,9 @@ class HyperliquidMarketData:
                     **hip_contexts[index],
                     "maxLeverage": item.get("maxLeverage", 20),
                 }
-        symbols = tuple(symbol for symbol in (*CORE_SYMBOLS, *HIP3_US_SYMBOLS) if symbol in context_by_symbol)
+        symbols = tuple(
+            symbol for symbol in (*CORE_SYMBOLS, *HIP3_US_SYMBOLS) if symbol in context_by_symbol
+        )
         if len(symbols) < 3:
             raise ValueError(f"Hyperliquid universe only returned {symbols}")
 
@@ -238,12 +235,15 @@ class HyperliquidMarketData:
                 + min(float(features["oi_usd"]) / 500_000_000.0, 1.0)
                 - min(float(features["spread_bps"]) / 5.0, 1.0)
             )
-            ranked.append({
-                "symbol": symbol, "score": score,
-                "spread_bps": float(features["spread_bps"]),
-                "ret_4h_pct": float(features["ret_4h_pct"]),
-                "oi_usd": float(features["oi_usd"]),
-            })
+            ranked.append(
+                {
+                    "symbol": symbol,
+                    "score": score,
+                    "spread_bps": float(features["spread_bps"]),
+                    "ret_4h_pct": float(features["ret_4h_pct"]),
+                    "oi_usd": float(features["oi_usd"]),
+                }
+            )
         ranked.sort(key=lambda item: item["score"], reverse=True)
         selected = {"BTC", "ETH", "SOL"}
         # Every allowlisted HIP-3 market enters the LLM universe during the US
@@ -252,7 +252,8 @@ class HyperliquidMarketData:
             selected.update(HIP3_US_SYMBOLS)
         limit = 15 if us_session.status is not UsEquitySessionStatus.CLOSED else 8
         selected.update(
-            item["symbol"] for item in ranked
+            item["symbol"]
+            for item in ranked
             if item["symbol"] not in selected
             and (
                 us_session.status is not UsEquitySessionStatus.CLOSED
@@ -261,15 +262,22 @@ class HyperliquidMarketData:
             and len(selected) < limit
         )
         self.last_universe_scan = [
-            {**item, "selected": item["symbol"] in selected,
-             "reason": (
-                 "US_SESSION_CLOSED"
-                 if item["symbol"] in HIP3_US_SYMBOLS and us_session.status is UsEquitySessionStatus.CLOSED
-                 else "CORE" if item["symbol"] in {"BTC", "ETH", "SOL"}
-                 else "US_HIP3" if item["symbol"] in HIP3_US_SYMBOLS
-                 else "TOP_SCORE" if item["symbol"] in selected
-                 else "BELOW_CUTOFF"
-             )}
+            {
+                **item,
+                "selected": item["symbol"] in selected,
+                "reason": (
+                    "US_SESSION_CLOSED"
+                    if item["symbol"] in HIP3_US_SYMBOLS
+                    and us_session.status is UsEquitySessionStatus.CLOSED
+                    else "CORE"
+                    if item["symbol"] in {"BTC", "ETH", "SOL"}
+                    else "US_HIP3"
+                    if item["symbol"] in HIP3_US_SYMBOLS
+                    else "TOP_SCORE"
+                    if item["symbol"] in selected
+                    else "BELOW_CUTOFF"
+                ),
+            }
             for item in ranked
         ]
 
@@ -277,12 +285,8 @@ class HyperliquidMarketData:
         return FeatureSheet(
             as_of=requested_at,
             assets=[computed[symbol] for symbol in symbols if symbol in selected],
-            corr_30d_btc_eth=_correlation(
-                daily_returns["BTC"][-30:], daily_returns["ETH"][-30:]
-            ),
-            corr_30d_btc_sol=_correlation(
-                daily_returns["BTC"][-30:], daily_returns["SOL"][-30:]
-            ),
+            corr_30d_btc_eth=_correlation(daily_returns["BTC"][-30:], daily_returns["ETH"][-30:]),
+            corr_30d_btc_sol=_correlation(daily_returns["BTC"][-30:], daily_returns["SOL"][-30:]),
         )
 
     def marks(self) -> dict[str, float]:

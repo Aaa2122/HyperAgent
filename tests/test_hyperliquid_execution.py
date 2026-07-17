@@ -320,14 +320,15 @@ def test_dynamic_exit_without_exchange_stop_never_raises_during_reconcile() -> N
     info = FakeInfo()
     exchange = FakeExchange(info)
     service = executor(repo, exchange, info)
-    dynamic = order().model_copy(
-        update={"place_stop_order": False, "take_profit_fractions": []}
-    )
+    dynamic = order().model_copy(update={"place_stop_order": False, "take_profit_fractions": []})
     assert service.execute(dynamic).status == "FILLED"
     service._rearm_missing_stop(
         {
-            "symbol": "BTC", "side": "LONG", "size": 0.0002,
-            "notional_usd": 13.0, "entry_px": 65_000,
+            "symbol": "BTC",
+            "side": "LONG",
+            "size": 0.0002,
+            "notional_usd": 13.0,
+            "entry_px": 65_000,
             "invalidation_px": 63_500,
         }
     )
@@ -415,20 +416,14 @@ def test_cancel_ack_without_verification_never_claims_protections_are_canceled()
     service.execute(order())
 
     protections = repo.protective_orders(symbol="BTC")
-    info.frontend_orders = [
-        {"coin": "BTC", "cloid": item["cloid"]}
-        for item in protections
-    ]
+    info.frontend_orders = [{"coin": "BTC", "cloid": item["cloid"]} for item in protections]
     info.frontend_orders_fail_after = 1
     info.asset_positions = []
 
     service.reconcile()
 
     assert len(exchange.cancel_calls) == 1
-    assert all(
-        item["status"] == "UNKNOWN"
-        for item in repo.protective_orders(symbol="BTC")
-    )
+    assert all(item["status"] == "UNKNOWN" for item in repo.protective_orders(symbol="BTC"))
 
 
 @pytest.mark.parametrize(
@@ -468,10 +463,7 @@ def test_reconcile_rearms_missing_stop_once_for_remaining_position(
             }
         }
     ]
-    info.frontend_orders = [
-        {"coin": "BTC", "cloid": item["cloid"]}
-        for item in take_profits
-    ]
+    info.frontend_orders = [{"coin": "BTC", "cloid": item["cloid"]} for item in take_profits]
     info.order_responses[old_stop["cloid"]] = {
         "status": "order",
         "order": {
@@ -486,14 +478,12 @@ def test_reconcile_rearms_missing_stop_once_for_remaining_position(
 
     service.reconcile()
 
-    stops = [
-        item for item in repo.protective_orders(symbol="BTC")
-        if item["kind"] == "SL"
-    ]
+    stops = [item for item in repo.protective_orders(symbol="BTC") if item["kind"] == "SL"]
     assert len(stops) == 2
-    assert next(item for item in stops if item["protection_id"] == old_stop["protection_id"])[
-        "status"
-    ] == "CANCELED"
+    assert (
+        next(item for item in stops if item["protection_id"] == old_stop["protection_id"])["status"]
+        == "CANCELED"
+    )
     rearmed = next(item for item in stops if item["protection_id"] != old_stop["protection_id"])
     assert rearmed["status"] == "ACTIVE"
     assert len(exchange.calls) == 1
@@ -511,17 +501,10 @@ def test_reconcile_rearms_missing_stop_once_for_remaining_position(
     service.reconcile()
 
     assert len(exchange.calls) == 1
-    assert len(
-        [
-            item for item in repo.protective_orders(symbol="BTC")
-            if item["kind"] == "SL"
-        ]
-    ) == 2
+    assert len([item for item in repo.protective_orders(symbol="BTC") if item["kind"] == "SL"]) == 2
 
     info.frontend_orders = [
-        item
-        for item in info.frontend_orders
-        if item["cloid"] != rearmed["cloid"]
+        item for item in info.frontend_orders if item["cloid"] != rearmed["cloid"]
     ]
     info.order_responses[rearmed["cloid"]] = {
         "status": "order",
@@ -532,23 +515,17 @@ def test_reconcile_rearms_missing_stop_once_for_remaining_position(
     }
     service.reconcile()
 
-    stops = [
-        item for item in repo.protective_orders(symbol="BTC")
-        if item["kind"] == "SL"
-    ]
+    stops = [item for item in repo.protective_orders(symbol="BTC") if item["kind"] == "SL"]
     assert len(exchange.calls) == 2
     assert len(stops) == 3
     second_rearm = next(
         item
         for item in stops
-        if item["protection_id"]
-        not in {old_stop["protection_id"], rearmed["protection_id"]}
+        if item["protection_id"] not in {old_stop["protection_id"], rearmed["protection_id"]}
     )
     assert second_rearm["status"] == "ACTIVE"
 
-    info.frontend_orders.append(
-        {"coin": "BTC", "cloid": second_rearm["cloid"]}
-    )
+    info.frontend_orders.append({"coin": "BTC", "cloid": second_rearm["cloid"]})
     service.reconcile()
 
     assert len(exchange.calls) == 2
@@ -574,9 +551,7 @@ def test_stop_rearm_unknown_ack_waits_for_confirmed_absence_before_retry() -> No
         }
     ]
     info.frontend_orders = [
-        {"coin": "BTC", "cloid": item["cloid"]}
-        for item in initial
-        if item["kind"] == "TP"
+        {"coin": "BTC", "cloid": item["cloid"]} for item in initial if item["kind"] == "TP"
     ]
     info.order_responses[old_stop["cloid"]] = {
         "status": "order",

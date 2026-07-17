@@ -13,16 +13,20 @@ from pydantic import (
     model_validator,
 )
 
-from llm_schemas import ConsequenceReport, FinalRiskReview, PlaybookRecord, TraderOutput
-
 from agent.activation import (
     ActivationMode,
     CryptoSession,
     UsEquitySession,
     validate_timezone_name,
 )
+from llm_schemas import ConsequenceReport, FinalRiskReview, PlaybookRecord, TraderOutput
 
-Symbol = Annotated[str, Field(pattern=r"^(BTC|ETH|SOL|XRP|BNB|HYPE|LINK|SUI|xyz:(TSLA|NVDA|AAPL|MSFT|AMZN|META|GOOGL))$")]
+Symbol = Annotated[
+    str,
+    Field(
+        pattern=r"^(BTC|ETH|SOL|XRP|BNB|HYPE|LINK|SUI|xyz:(TSLA|NVDA|AAPL|MSFT|AMZN|META|GOOGL))$"
+    ),
+]
 
 
 class KillSwitchState(str, Enum):
@@ -139,14 +143,10 @@ class DecisionBundle(BaseModel):
     playbook: PlaybookRecord
     trader: TraderOutput
     provider: str
-    provenance: Literal["GROK", "CACHE", "RULE_FALLBACK", "SAFE_HOLD"] = (
-        "RULE_FALLBACK"
-    )
+    provenance: Literal["GROK", "CACHE", "RULE_FALLBACK", "SAFE_HOLD"] = "RULE_FALLBACK"
     status: Literal["NOMINAL", "DEGRADED"] = "NOMINAL"
     reasons: list[StructuredReason] = Field(default_factory=list, max_length=8)
-    conviction_diagnostics: list[ConvictionDiagnostic] = Field(
-        default_factory=list, max_length=8
-    )
+    conviction_diagnostics: list[ConvictionDiagnostic] = Field(default_factory=list, max_length=8)
     initial_trader: TraderOutput | None = None
     consequence_report: ConsequenceReport | None = None
     risk_review: FinalRiskReview | None = None

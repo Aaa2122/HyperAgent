@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from decimal import Decimal, ROUND_DOWN
 from datetime import datetime, timezone
+from decimal import ROUND_DOWN, Decimal
 from typing import Any
 
 from eth_account import Account
@@ -75,11 +75,7 @@ class HyperliquidReadiness:
             collateral_source = "spotClearinghouseState"
         else:
             account_value = float(margin.get("accountValue") or 0)
-            withdrawable = (
-                float(state.get("withdrawable") or 0)
-                if isinstance(state, dict)
-                else 0.0
-            )
+            withdrawable = float(state.get("withdrawable") or 0) if isinstance(state, dict) else 0.0
             collateral_source = "clearinghouseState"
         blockers: list[str] = []
         if not authorized:
@@ -188,9 +184,7 @@ class HyperliquidExecutionService:
             and self.max_open_notional_usd is not None
             and order.notional_usd > self.max_open_notional_usd
         ):
-            raise PermissionError(
-                f"{self.network} open-order notional exceeds the configured cap"
-            )
+            raise PermissionError(f"{self.network} open-order notional exceeds the configured cap")
 
         intent_id, cloid = build_intent_identity(order.decision_key)
         intent, created = self.repository.get_or_create_intent(
@@ -209,8 +203,7 @@ class HyperliquidExecutionService:
             )
         if (
             order.action == "OPEN"
-            and self.repository.count_open_intents(order.cycle_id)
-            > self.max_open_orders_per_cycle
+            and self.repository.count_open_intents(order.cycle_id) > self.max_open_orders_per_cycle
         ):
             self.repository.mark_intent(intent_id, "REJECTED")
             self.repository.add_event(
@@ -248,7 +241,10 @@ class HyperliquidExecutionService:
                     order.symbol,
                     is_cross=self.is_cross,
                 )
-                if not isinstance(leverage_response, dict) or leverage_response.get("status") != "ok":
+                if (
+                    not isinstance(leverage_response, dict)
+                    or leverage_response.get("status") != "ok"
+                ):
                     raise RuntimeError("leverage update rejected")
             except Exception as exc:
                 # A leverage update is idempotent account configuration. If its ACK is
@@ -353,9 +349,7 @@ class HyperliquidExecutionService:
             if request is not None:
                 requests.append(request)
             else:
-                self.repository.mark_protection(
-                    spec.protection_id, "SKIPPED_TOO_SMALL"
-                )
+                self.repository.mark_protection(spec.protection_id, "SKIPPED_TOO_SMALL")
 
         response = self.exchange.bulk_orders(requests, grouping="normalTpsl")
         status = self._submission_status(response)
@@ -369,13 +363,9 @@ class HyperliquidExecutionService:
             if self._protection_size(order.symbol, size, spec.size_fraction) > 0:
                 child_status = self._child_submission_status(response, spec_index)
                 if child_status == "REJECTED" and spec.kind == "SL":
-                    retry_request = self._protection_request(
-                        order.symbol, not is_buy, size, spec
-                    )
+                    retry_request = self._protection_request(order.symbol, not is_buy, size, spec)
                     if retry_request is not None:
-                        retry_response = self._submit_protection_request(
-                            retry_request
-                        )
+                        retry_response = self._submit_protection_request(retry_request)
                         child_status = self._submission_status(retry_response)
                 self.repository.mark_protection(
                     spec.protection_id,
@@ -411,9 +401,7 @@ class HyperliquidExecutionService:
                     size_override=child_size,
                 )
                 if request is None:
-                    self.repository.mark_protection(
-                        spec.protection_id, "SKIPPED_TOO_SMALL"
-                    )
+                    self.repository.mark_protection(spec.protection_id, "SKIPPED_TOO_SMALL")
                     continue
                 remaining_requests.append(request)
                 submitted_specs.append(spec)
@@ -487,9 +475,7 @@ class HyperliquidExecutionService:
             cloid=request["cloid"],
         )
 
-    def _protection_size(
-        self, symbol: str, full_size: float, fraction: float
-    ) -> float:
+    def _protection_size(self, symbol: str, full_size: float, fraction: float) -> float:
         coin = self.info.name_to_coin[symbol]
         asset = self.info.coin_to_asset[coin]
         decimals = self.info.asset_to_sz_decimals[asset]
@@ -505,9 +491,7 @@ class HyperliquidExecutionService:
         asset = self.info.coin_to_asset[coin]
         decimals = self.info.asset_to_sz_decimals[asset]
         quantum = Decimal(1).scaleb(-decimals)
-        return float(
-            Decimal(str(raw_size)).quantize(quantum, rounding=ROUND_DOWN)
-        )
+        return float(Decimal(str(raw_size)).quantize(quantum, rounding=ROUND_DOWN))
 
     def _allocate_sizes(
         self,
@@ -522,9 +506,9 @@ class HyperliquidExecutionService:
         decimals = self.info.asset_to_sz_decimals[asset]
         quantum = Decimal(1).scaleb(-decimals)
         total_units = int(
-            (
-                Decimal(str(total_size)) + quantum / Decimal(1000)
-            ).quantize(quantum, rounding=ROUND_DOWN)
+            (Decimal(str(total_size)) + quantum / Decimal(1000)).quantize(
+                quantum, rounding=ROUND_DOWN
+            )
             / quantum
         )
         decimal_weights = [Decimal(str(weight)) for weight in weights]
@@ -556,19 +540,14 @@ class HyperliquidExecutionService:
             return
         try:
             response = self.exchange.bulk_cancel_by_cloid(
-                [
-                    {"coin": symbol, "cloid": Cloid.from_str(item["cloid"])}
-                    for item in active
-                ]
+                [{"coin": symbol, "cloid": Cloid.from_str(item["cloid"])} for item in active]
             )
             if not isinstance(response, dict) or response.get("status") != "ok":
                 raise RuntimeError("protective cancellation rejected")
             remaining = self._open_orders_snapshot()
             if remaining is None:
                 for item in active:
-                    self.repository.mark_protection(
-                        item["protection_id"], "UNKNOWN"
-                    )
+                    self.repository.mark_protection(item["protection_id"], "UNKNOWN")
                 self.repository.add_event(
                     "PROTECTION_CANCEL_UNVERIFIED",
                     {"symbol": symbol, "protection_count": len(active)},
@@ -576,11 +555,7 @@ class HyperliquidExecutionService:
                 )
                 return
             for item in active:
-                status = (
-                    "ACTIVE"
-                    if item["cloid"].lower() in remaining
-                    else "CANCELED"
-                )
+                status = "ACTIVE" if item["cloid"].lower() in remaining else "CANCELED"
                 self.repository.mark_protection(item["protection_id"], status)
         except Exception as exc:
             self.repository.add_event(
@@ -639,14 +614,10 @@ class HyperliquidExecutionService:
         ):
             protection_cloid = protection["cloid"].lower()
             if protection_cloid in filled_cloids:
-                self.repository.mark_protection(
-                    protection["protection_id"], "TRIGGERED"
-                )
+                self.repository.mark_protection(protection["protection_id"], "TRIGGERED")
                 continue
             if open_orders is not None and protection_cloid in open_orders:
-                self.repository.mark_protection(
-                    protection["protection_id"], "ACTIVE"
-                )
+                self.repository.mark_protection(protection["protection_id"], "ACTIVE")
                 continue
             try:
                 response = self.info.query_order_by_cloid(
@@ -661,18 +632,14 @@ class HyperliquidExecutionService:
                     "REJECTED": "REJECTED",
                 }.get(exchange_status)
                 if mapped is not None:
-                    self.repository.mark_protection(
-                        protection["protection_id"], mapped
-                    )
+                    self.repository.mark_protection(protection["protection_id"], mapped)
                     if exchange_status == "OPEN":
                         verified_open_cloids.add(protection_cloid)
                 elif open_orders is not None:
                     # The CLOID is absent from both queryOrderByCloid and the
                     # complete open-order snapshot. This generation is terminal,
                     # so a missing stop may safely use a new deterministic CLOID.
-                    self.repository.mark_protection(
-                        protection["protection_id"], "CANCELED"
-                    )
+                    self.repository.mark_protection(protection["protection_id"], "CANCELED")
                     self.repository.add_event(
                         "PROTECTION_MISSING_CONFIRMED",
                         {
@@ -683,9 +650,7 @@ class HyperliquidExecutionService:
                         severity="WARN",
                     )
                 else:
-                    self.repository.mark_protection(
-                        protection["protection_id"], "UNKNOWN"
-                    )
+                    self.repository.mark_protection(protection["protection_id"], "UNKNOWN")
                     unknown_protection_cloids.add(protection_cloid)
             except Exception as exc:
                 unknown_protection_cloids.add(protection_cloid)
@@ -703,9 +668,7 @@ class HyperliquidExecutionService:
         if live_positions is None:
             return results
 
-        active = self.repository.protective_orders(
-            statuses={"PENDING", "ACTIVE", "UNKNOWN"}
-        )
+        active = self.repository.protective_orders(statuses={"PENDING", "ACTIVE", "UNKNOWN"})
         by_symbol: dict[str, list[dict[str, Any]]] = {}
         for protection in active:
             by_symbol.setdefault(protection["symbol"], []).append(protection)
@@ -735,9 +698,7 @@ class HyperliquidExecutionService:
         all_protections = self.repository.protective_orders()
         for symbol, position in live_positions.items():
             current_open = self.repository.latest_filled_open_intent(symbol)
-            current_parent_id = (
-                current_open["intent_id"] if current_open is not None else None
-            )
+            current_parent_id = current_open["intent_id"] if current_open is not None else None
             if current_open is not None and not bool(
                 current_open.get("payload", {}).get("place_stop_order", True)
             ):
@@ -750,14 +711,10 @@ class HyperliquidExecutionService:
                 and item["kind"] == "SL"
                 and item["parent_intent_id"] == current_parent_id
             ]
-            if any(
-                item["cloid"].lower() in verified_open_cloids
-                for item in stop_rows
-            ):
+            if any(item["cloid"].lower() in verified_open_cloids for item in stop_rows):
                 continue
             if open_orders is None and any(
-                item["cloid"].lower() in unknown_protection_cloids
-                for item in stop_rows
+                item["cloid"].lower() in unknown_protection_cloids for item in stop_rows
             ):
                 # When the exchange cannot prove either presence or absence, do not
                 # risk placing a duplicate stop. A later monitor pass will retry the
@@ -844,9 +801,7 @@ class HyperliquidExecutionService:
             if "place_stop_order" not in metadata["payload"]:
                 # Orders created before Grok gained explicit exit-policy fields
                 # always had an exchange stop by construction.
-                opening_order = opening_order.model_copy(
-                    update={"place_stop_order": True}
-                )
+                opening_order = opening_order.model_copy(update={"place_stop_order": True})
         except Exception as exc:
             self.repository.add_event(
                 "STOP_REARM_BLOCKED",
@@ -880,20 +835,13 @@ class HyperliquidExecutionService:
             return
 
         desired = opening_order.model_copy(update={"notional_usd": notional})
-        identity_base = (
-            f"{metadata['cloid']}|stop-rearm|{size:.12f}|"
-            f"{desired.invalidation_px:.8f}"
-        )
-        existing = self.repository.protective_orders(
-            parent_intent_id=metadata["intent_id"]
-        )
+        identity_base = f"{metadata['cloid']}|stop-rearm|{size:.12f}|{desired.invalidation_px:.8f}"
+        existing = self.repository.protective_orders(parent_intent_id=metadata["intent_id"])
         by_id = {item["protection_id"]: item for item in existing}
         stop = None
         for generation in range(1, 4):
             identity = f"{identity_base}|generation:{generation}"
-            rearm_parent_cloid = "0x" + hashlib.sha256(
-                identity.encode("utf-8")
-            ).hexdigest()[:32]
+            rearm_parent_cloid = "0x" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
             candidate = next(
                 (
                     item
@@ -984,9 +932,7 @@ class HyperliquidExecutionService:
                 # Compatibility with injected test/legacy clients.
                 break
         positions: list[dict] = []
-        for wrapper in (
-            wrapper for state in states for wrapper in state.get("assetPositions", [])
-        ):
+        for wrapper in (wrapper for state in states for wrapper in state.get("assetPositions", [])):
             position = wrapper.get("position", {})
             size = float(position.get("szi") or 0)
             if size == 0:
@@ -1008,12 +954,8 @@ class HyperliquidExecutionService:
                     "leverage": leverage,
                     "margin_used_usd": notional / leverage,
                     "entry_px": float(position.get("entryPx") or 0),
-                    "mark_px": (
-                        notional / abs(size) if abs(size) > 0 else 0.0
-                    ),
-                    "unrealized_pnl_usd": float(
-                        position.get("unrealizedPnl") or 0
-                    ),
+                    "mark_px": (notional / abs(size) if abs(size) > 0 else 0.0),
+                    "unrealized_pnl_usd": float(position.get("unrealizedPnl") or 0),
                     "roe_pct": float(position.get("returnOnEquity") or 0) * 100,
                     "liquidation_px": float(position.get("liquidationPx") or 0),
                     "invalidation_px": float(payload["invalidation_px"]),
@@ -1031,8 +973,7 @@ class HyperliquidExecutionService:
 
     def monitor(self, marks: dict[str, float]) -> list[dict]:
         before = {
-            item["protection_id"]: item["status"]
-            for item in self.repository.protective_orders()
+            item["protection_id"]: item["status"] for item in self.repository.protective_orders()
         }
         self.reconcile()
         self._apply_dynamic_management(marks)
@@ -1074,22 +1015,29 @@ class HyperliquidExecutionService:
                         self._automatic_close(position, metadata, mark, "TIME_STOP")
                         continue
             if mode == "TRAILING" and payload.get("trailing_stop_pct"):
-                state = self.repository.latest_event_payload(
-                    "DYNAMIC_EXIT_STATE", symbol=symbol,
-                    parent_intent_id=metadata["intent_id"],
-                ) or {}
+                state = (
+                    self.repository.latest_event_payload(
+                        "DYNAMIC_EXIT_STATE",
+                        symbol=symbol,
+                        parent_intent_id=metadata["intent_id"],
+                    )
+                    or {}
+                )
                 previous = float(state.get("watermark_px") or position["entry_px"])
                 watermark = (
-                    max(previous, mark) if position["side"] == "LONG"
-                    else min(previous, mark)
+                    max(previous, mark) if position["side"] == "LONG" else min(previous, mark)
                 )
                 if watermark != previous or not state:
-                    self.repository.add_event("DYNAMIC_EXIT_STATE", {
-                        "symbol": symbol,
-                        "parent_intent_id": metadata["intent_id"],
-                        "watermark_px": watermark,
-                        "mode": "TRAILING",
-                    }, cycle_id=metadata["cycle_id"])
+                    self.repository.add_event(
+                        "DYNAMIC_EXIT_STATE",
+                        {
+                            "symbol": symbol,
+                            "parent_intent_id": metadata["intent_id"],
+                            "watermark_px": watermark,
+                            "mode": "TRAILING",
+                        },
+                        cycle_id=metadata["cycle_id"],
+                    )
                 distance = float(payload["trailing_stop_pct"]) / 100
                 hit = (
                     mark <= watermark * (1 - distance)
@@ -1102,23 +1050,27 @@ class HyperliquidExecutionService:
             threshold = payload.get("move_to_break_even_at_r")
             if threshold:
                 state = self.repository.latest_event_payload(
-                    "BREAK_EVEN_ARMED", symbol=symbol,
+                    "BREAK_EVEN_ARMED",
+                    symbol=symbol,
                     parent_intent_id=metadata["intent_id"],
                 )
                 entry = float(position["entry_px"])
                 invalidation = float(position["invalidation_px"])
                 risk = max(abs(entry - invalidation), 1e-12)
                 favorable_r = (
-                    (mark - entry) / risk if position["side"] == "LONG"
-                    else (entry - mark) / risk
+                    (mark - entry) / risk if position["side"] == "LONG" else (entry - mark) / risk
                 )
                 if state is None and favorable_r >= float(threshold):
-                    self.repository.add_event("BREAK_EVEN_ARMED", {
-                        "symbol": symbol,
-                        "parent_intent_id": metadata["intent_id"],
-                        "armed_at_px": mark,
-                        "threshold_r": float(threshold),
-                    }, cycle_id=metadata["cycle_id"])
+                    self.repository.add_event(
+                        "BREAK_EVEN_ARMED",
+                        {
+                            "symbol": symbol,
+                            "parent_intent_id": metadata["intent_id"],
+                            "armed_at_px": mark,
+                            "threshold_r": float(threshold),
+                        },
+                        cycle_id=metadata["cycle_id"],
+                    )
                     state = {"armed": True}
                 if state is not None and (
                     (position["side"] == "LONG" and mark <= entry)
@@ -1126,9 +1078,7 @@ class HyperliquidExecutionService:
                 ):
                     self._automatic_close(position, metadata, mark, "BREAK_EVEN")
 
-    def _automatic_close(
-        self, position: dict, metadata: dict, mark: float, reason: str
-    ) -> None:
+    def _automatic_close(self, position: dict, metadata: dict, mark: float, reason: str) -> None:
         if self.repository.current_kill_switch() is not KillSwitchState.RUNNING:
             return
         payload = metadata.get("payload", {})
@@ -1159,11 +1109,7 @@ class HyperliquidExecutionService:
             quantum,
             rounding=ROUND_DOWN,
         )
-        is_buy = (
-            order.direction == "LONG"
-            if order.action == "OPEN"
-            else order.direction == "SHORT"
-        )
+        is_buy = order.direction == "LONG" if order.action == "OPEN" else order.direction == "SHORT"
         slippage = Decimal(self.slippage_bps) / Decimal(10_000)
         multiplier = Decimal(1) + slippage if is_buy else Decimal(1) - slippage
         raw_price = float(Decimal(str(order.mark_px)) * multiplier)
@@ -1219,13 +1165,9 @@ class HyperliquidExecutionService:
             return "UNKNOWN"
         nested = response.get("order")
         nested_status = (
-            nested.get("status") or nested.get("orderStatus")
-            if isinstance(nested, dict)
-            else None
+            nested.get("status") or nested.get("orderStatus") if isinstance(nested, dict) else None
         )
-        order_status = str(
-            response.get("orderStatus") or nested_status or ""
-        ).lower()
+        order_status = str(response.get("orderStatus") or nested_status or "").lower()
         if order_status == "filled":
             return "FILLED"
         if order_status == "open":

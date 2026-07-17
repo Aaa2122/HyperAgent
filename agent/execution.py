@@ -59,9 +59,7 @@ class PaperExecutionService:
             if order.action == "OPEN":
                 self.repository.open_paper_position(order)
                 specs = build_protection_specs(order, cloid)
-                self.repository.ensure_protective_orders(
-                    intent_id, order.cycle_id, specs, "ACTIVE"
-                )
+                self.repository.ensure_protective_orders(intent_id, order.cycle_id, specs, "ACTIVE")
             elif order.action == "REDUCE":
                 current = next(
                     (p for p in self.repository.positions() if p["symbol"] == order.symbol),
@@ -72,11 +70,7 @@ class PaperExecutionService:
                     self.repository.reduce_paper_position(order.symbol, fraction)
                     self.repository.cancel_protections(order.symbol)
                     remaining = next(
-                        (
-                            p
-                            for p in self.repository.positions()
-                            if p["symbol"] == order.symbol
-                        ),
+                        (p for p in self.repository.positions() if p["symbol"] == order.symbol),
                         None,
                     )
                     if remaining is not None:
@@ -127,9 +121,7 @@ class PaperExecutionService:
             if not order.targets:
                 plan = self.repository.latest_playbook_plan(position["symbol"])
                 if plan is not None:
-                    order = order.model_copy(
-                        update={"targets": list(plan.get("targets", []))}
-                    )
+                    order = order.model_copy(update={"targets": list(plan.get("targets", []))})
             specs = build_protection_specs(order, metadata["cloid"])
             self.repository.ensure_protective_orders(
                 metadata["intent_id"], metadata["cycle_id"], specs, "ACTIVE"

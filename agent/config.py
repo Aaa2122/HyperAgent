@@ -120,9 +120,7 @@ class Settings(BaseSettings):
             crypto_sessions=self.crypto_sessions,
             liquidity_filter_enabled=self.liquidity_filter_enabled,
             liquidity_min_24h_volume_usd=self.liquidity_min_24h_volume_usd,
-            liquidity_min_open_interest_usd=(
-                self.liquidity_min_open_interest_usd
-            ),
+            liquidity_min_open_interest_usd=(self.liquidity_min_open_interest_usd),
             liquidity_min_eligible_assets=self.liquidity_min_eligible_assets,
         )
         provider = self.llm_provider.strip().lower()
@@ -160,16 +158,14 @@ class Settings(BaseSettings):
             if self.live_confirmation != "I_UNDERSTAND_THE_RISKS":
                 raise ValueError("LIVE_CONFIRMATION is missing or invalid")
             if self.automation_enabled and (
-                self.live_automation_confirmation
-                != "I_UNDERSTAND_LIVE_AUTOMATION"
+                self.live_automation_confirmation != "I_UNDERSTAND_LIVE_AUTOMATION"
             ):
                 raise ValueError("LIVE_AUTOMATION_CONFIRMATION is missing or invalid")
             if not self.guardrails_configured:
                 raise ValueError("A non-empty guardrail configuration is required")
             if not self.hyperliquid_account_address or not self.hyperliquid_private_key:
                 raise ValueError(
-                    "HYPERLIQUID_ACCOUNT_ADDRESS and HYPERLIQUID_PRIVATE_KEY are required "
-                    "for LIVE"
+                    "HYPERLIQUID_ACCOUNT_ADDRESS and HYPERLIQUID_PRIVATE_KEY are required for LIVE"
                 )
             if self.hyperliquid_execution_network != "mainnet":
                 raise ValueError("LIVE requires HYPERLIQUID_EXECUTION_NETWORK=mainnet")
@@ -177,9 +173,7 @@ class Settings(BaseSettings):
                 raise ValueError("LIVE requires a durable PostgreSQL DATABASE_URL")
 
         if self.agent_mode is AgentMode.SUPERVISED:
-            raise ValueError(
-                "SUPERVISED is intentionally unavailable; use PAPER, TESTNET, or LIVE"
-            )
+            raise ValueError("SUPERVISED is intentionally unavailable; use PAPER, TESTNET, or LIVE")
         return self
 
     @property

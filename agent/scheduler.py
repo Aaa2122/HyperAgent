@@ -35,13 +35,9 @@ class AutomationScheduler:
             "last_risk_monitor_at": None,
             "last_risk_monitor_status": None,
             "risk_monitor_running": False,
-            "activation_state": (
-                "WAITING" if settings.automation_enabled else "BLOCKED"
-            ),
+            "activation_state": ("WAITING" if settings.automation_enabled else "BLOCKED"),
             "activation_reason": (
-                "INITIALIZING"
-                if settings.automation_enabled
-                else "AUTOMATION_DISABLED"
+                "INITIALIZING" if settings.automation_enabled else "AUTOMATION_DISABLED"
             ),
             "next_activation_window_at": None,
             "next_activation_window_local": None,
@@ -87,24 +83,24 @@ class AutomationScheduler:
 
     def status(self) -> dict[str, Any]:
         activity_getter = getattr(self.service, "activity_status", None)
-        activity = activity_getter() if activity_getter else {
-            "phase": "RUNNING" if self._state.get("running") else "WAITING",
-            "phase_started_at": None,
-            "phase_detail": None,
-        }
+        activity = (
+            activity_getter()
+            if activity_getter
+            else {
+                "phase": "RUNNING" if self._state.get("running") else "WAITING",
+                "phase_started_at": None,
+                "phase_detail": None,
+            }
+        )
         with self._state_lock:
             return {
                 **self._state,
                 **activity,
                 "server_time": self._now(),
                 "cycle_interval_seconds": self.settings.cycle_interval_seconds,
-                "risk_monitor_interval_seconds": (
-                    self.settings.risk_monitor_interval_seconds
-                ),
+                "risk_monitor_interval_seconds": (self.settings.risk_monitor_interval_seconds),
                 "x_research_cache_seconds": self.settings.x_research_cache_seconds,
-                "strategist_refresh_seconds": (
-                    self.settings.strategist_refresh_seconds
-                ),
+                "strategist_refresh_seconds": (self.settings.strategist_refresh_seconds),
                 "activation_config": self._activation_config().public_dict(),
             }
 
@@ -114,9 +110,7 @@ class AutomationScheduler:
             self._state["enabled"] = enabled
             self._state["running"] = enabled and bool(self._threads)
             self._state["next_cycle_at"] = self._now() if enabled else None
-            self._state["activation_state"] = (
-                "WAITING" if enabled else "BLOCKED"
-            )
+            self._state["activation_state"] = "WAITING" if enabled else "BLOCKED"
             self._state["activation_reason"] = (
                 "AUTOMATION_ENABLED" if enabled else "AUTOMATION_DISABLED"
             )
@@ -153,15 +147,9 @@ class AutomationScheduler:
             us_equities_sessions=self.settings.us_equities_sessions,
             crypto_sessions=self.settings.crypto_sessions,
             liquidity_filter_enabled=self.settings.liquidity_filter_enabled,
-            liquidity_min_24h_volume_usd=(
-                self.settings.liquidity_min_24h_volume_usd
-            ),
-            liquidity_min_open_interest_usd=(
-                self.settings.liquidity_min_open_interest_usd
-            ),
-            liquidity_min_eligible_assets=(
-                self.settings.liquidity_min_eligible_assets
-            ),
+            liquidity_min_24h_volume_usd=(self.settings.liquidity_min_24h_volume_usd),
+            liquidity_min_open_interest_usd=(self.settings.liquidity_min_open_interest_usd),
+            liquidity_min_eligible_assets=(self.settings.liquidity_min_eligible_assets),
         )
 
     def configure(
@@ -239,22 +227,14 @@ class AutomationScheduler:
             )
             self.settings.activation_mode = candidate.mode
             self.settings.activation_timezone = candidate.timezone
-            self.settings.us_equities_sessions = list(
-                candidate.us_equities_sessions
-            )
+            self.settings.us_equities_sessions = list(candidate.us_equities_sessions)
             self.settings.crypto_sessions = list(candidate.crypto_sessions)
-            self.settings.liquidity_filter_enabled = (
-                candidate.liquidity_filter_enabled
-            )
-            self.settings.liquidity_min_24h_volume_usd = (
-                candidate.liquidity_min_24h_volume_usd
-            )
+            self.settings.liquidity_filter_enabled = candidate.liquidity_filter_enabled
+            self.settings.liquidity_min_24h_volume_usd = candidate.liquidity_min_24h_volume_usd
             self.settings.liquidity_min_open_interest_usd = (
                 candidate.liquidity_min_open_interest_usd
             )
-            self.settings.liquidity_min_eligible_assets = (
-                candidate.liquidity_min_eligible_assets
-            )
+            self.settings.liquidity_min_eligible_assets = candidate.liquidity_min_eligible_assets
             with self._state_lock:
                 if self._state["enabled"]:
                     self._state["next_cycle_at"] = self._now()
@@ -266,15 +246,12 @@ class AutomationScheduler:
             with self._state_lock:
                 if self._state["running"] and self._state["last_cycle_status"] != "RUNNING":
                     if (
-                        self._state["activation_reason"]
-                        == "OUTSIDE_ACTIVATION_WINDOW"
+                        self._state["activation_reason"] == "OUTSIDE_ACTIVATION_WINDOW"
                         and self._state["next_activation_window_at"]
                     ):
                         # Cadence changes must not pull an inactive market
                         # window forward and create repetitive skipped cycles.
-                        self._state["next_cycle_at"] = self._state[
-                            "next_activation_window_at"
-                        ]
+                        self._state["next_cycle_at"] = self._state["next_activation_window_at"]
                     else:
                         finished = self._state["last_cycle_finished_at"]
                         base = (
@@ -288,9 +265,7 @@ class AutomationScheduler:
                         ).isoformat()
             self._schedule_changed.set()
         if risk_monitor_interval_seconds is not None:
-            self.settings.risk_monitor_interval_seconds = (
-                risk_monitor_interval_seconds
-            )
+            self.settings.risk_monitor_interval_seconds = risk_monitor_interval_seconds
         if enabled is not None:
             return self.set_enabled(enabled)
         return self.status()
@@ -332,9 +307,7 @@ class AutomationScheduler:
                     {"error": type(exc).__name__},
                     severity="ERROR",
                 )
-            kill_reader = getattr(
-                self.service.repository, "current_kill_switch", None
-            )
+            kill_reader = getattr(self.service.repository, "current_kill_switch", None)
             kill_state = kill_reader().value if callable(kill_reader) else "RUNNING"
             with self._state_lock:
                 resume_pending = self._state.get("last_cycle_reason") == "KILL_SWITCH_RESUMED"
@@ -352,12 +325,8 @@ class AutomationScheduler:
                 self._state["activation_reason"] = policy.get(
                     "reason", "CYCLE_FAILED" if status.startswith("FAILED") else None
                 )
-                self._state["next_activation_window_at"] = policy.get(
-                    "next_window_at"
-                )
-                self._state["next_activation_window_local"] = policy.get(
-                    "next_window_local"
-                )
+                self._state["next_activation_window_at"] = policy.get("next_window_at")
+                self._state["next_activation_window_local"] = policy.get("next_window_local")
                 if kill_state != "RUNNING":
                     self._state["next_cycle_at"] = None
                     self._state["activation_state"] = "BLOCKED"
@@ -366,9 +335,8 @@ class AutomationScheduler:
                     self._state["next_cycle_at"] = None
                 elif resume_pending:
                     self._state["next_cycle_at"] = self._now()
-                elif (
-                    policy.get("reason") == "OUTSIDE_ACTIVATION_WINDOW"
-                    and policy.get("next_window_at")
+                elif policy.get("reason") == "OUTSIDE_ACTIVATION_WINDOW" and policy.get(
+                    "next_window_at"
                 ):
                     self._state["next_cycle_at"] = policy["next_window_at"]
                 else:

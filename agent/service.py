@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import uuid
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
-
-from llm_checks import LLMLayerConfig
 
 from agent.activation import (
     ActivationConfig,
@@ -32,6 +30,7 @@ from agent.repository import Repository
 from agent.research import GrokXResearchProvider, NeutralResearchProvider
 from agent.strategies import MeanReversionStrategy, MomentumStrategy
 from agent.symbols import ALL_SYMBOLS
+from llm_checks import LLMLayerConfig
 
 
 class AgentService:
@@ -64,9 +63,7 @@ class AgentService:
         self._trade_history_client: HyperliquidInfoClient | None = None
         self._instrument_registry_cache: tuple[float, dict] | None = None
         self._instrument_registry_client: HyperliquidInfoClient | None = None
-        self._activation_observation_cache: (
-            tuple[float, LiquidityObservation] | None
-        ) = None
+        self._activation_observation_cache: tuple[float, LiquidityObservation] | None = None
         self._last_llm_cycle_at = 0.0
         self._last_llm_marks: dict[str, float] = {}
         self._material_event_pending = False
@@ -97,12 +94,8 @@ class AgentService:
                     "min_open_confidence": settings.experimental_min_open_confidence,
                     "max_opens_per_day_per_symbol": 12,
                     "stop_out_cooldown_minutes": 15.0,
-                    "max_portfolio_risk_frac": (
-                        settings.experimental_max_portfolio_risk_frac
-                    ),
-                    "max_net_exposure_frac": (
-                        settings.experimental_max_net_exposure_frac
-                    ),
+                    "max_portfolio_risk_frac": (settings.experimental_max_portfolio_risk_frac),
+                    "max_net_exposure_frac": (settings.experimental_max_net_exposure_frac),
                     "min_order_notional_usd": 10.0,
                     "market_data_max_age_seconds": 60.0,
                     "max_asset_notional_usd": {s: experimental_cap for s in ALL_SYMBOLS},
@@ -153,9 +146,7 @@ class AgentService:
             previous_cycles = self.repository.dashboard(limit=1)["cycles"]
             if previous_cycles:
                 previous_playbook = (
-                    previous_cycles[0].get("state", {})
-                    .get("decision", {})
-                    .get("playbook")
+                    previous_cycles[0].get("state", {}).get("decision", {}).get("playbook")
                 )
                 decisions.seed_playbook(previous_playbook)
         if isinstance(research, GrokXResearchProvider):
@@ -168,8 +159,7 @@ class AgentService:
             if not readiness["ready_for_orders"]:
                 blockers = ", ".join(readiness["blockers"])
                 raise RuntimeError(
-                    f"Hyperliquid {settings.hyperliquid_execution_network} is not ready: "
-                    f"{blockers}"
+                    f"Hyperliquid {settings.hyperliquid_execution_network} is not ready: {blockers}"
                 )
             equity_usd = readiness["account_value_usd"]
             if settings.agent_mode is AgentMode.LIVE:
@@ -181,9 +171,7 @@ class AgentService:
                 slippage_bps = settings.testnet_slippage_bps
                 max_open_orders_per_cycle = 100
                 guardrail_config = guardrail_config.model_copy(
-                    update={
-                        "max_asset_notional_usd": {s: cap for s in ALL_SYMBOLS}
-                    }
+                    update={"max_asset_notional_usd": {s: cap for s in ALL_SYMBOLS}}
                 )
             execution = HyperliquidExecutionService(
                 self.repository,
@@ -201,16 +189,16 @@ class AgentService:
             execution = PaperExecutionService(self.repository, settings.agent_mode)
         self.execution = execution
         self.graph_dependencies = GraphDependencies(
-                mode=settings.agent_mode,
-                equity_usd=equity_usd,
-                repository=self.repository,
-                market=self.market,
-                strategies=[MomentumStrategy(), MeanReversionStrategy()],
-                research=research,
-                decisions=decisions,
-                guardrails=GuardrailEngine(guardrail_config),
-                execution=execution,
-                activity_callback=self.set_activity,
+            mode=settings.agent_mode,
+            equity_usd=equity_usd,
+            repository=self.repository,
+            market=self.market,
+            strategies=[MomentumStrategy(), MeanReversionStrategy()],
+            research=research,
+            decisions=decisions,
+            guardrails=GuardrailEngine(guardrail_config),
+            execution=execution,
+            activity_callback=self.set_activity,
         )
         self.graph = build_graph(self.graph_dependencies)
 
@@ -227,7 +215,9 @@ class AgentService:
             return dict(self._activity)
 
     def run_cycle(
-        self, *, allow_external_research: bool = True,
+        self,
+        *,
+        allow_external_research: bool = True,
         allow_strategist_refresh: bool = True,
     ) -> dict:
         if not self._cycle_lock.acquire(blocking=False):
@@ -250,8 +240,7 @@ class AgentService:
         finally:
             self._cycle_lock.release()
 
-    def _run_cycle(self, *, allow_external_research: bool,
-                   allow_strategist_refresh: bool) -> dict:
+    def _run_cycle(self, *, allow_external_research: bool, allow_strategist_refresh: bool) -> dict:
         if self.settings.agent_mode in {AgentMode.TESTNET, AgentMode.LIVE}:
             readiness = self.hyperliquid_readiness(fresh=True)
             if not readiness["ready_for_orders"]:
@@ -310,11 +299,16 @@ class AgentService:
         if not policy["run"]:
             effective_reason = policy.get("event_reason") or policy["reason"]
             self.set_activity("WAITING", effective_reason)
-            self.repository.record_llm_call({
-                "stage": "cycle_policy", "provider": "system", "model": "deterministic",
-                "status": "SKIPPED", "skipped_reason": effective_reason,
-                "response": policy,
-            })
+            self.repository.record_llm_call(
+                {
+                    "stage": "cycle_policy",
+                    "provider": "system",
+                    "model": "deterministic",
+                    "status": "SKIPPED",
+                    "skipped_reason": effective_reason,
+                    "response": policy,
+                }
+            )
             self.repository.add_event("LLM_CYCLE_SKIPPED", policy)
             return {"status": "SKIPPED", "policy": policy}
         result = self.run_cycle(
@@ -342,9 +336,21 @@ class AgentService:
         due = not self._last_llm_marks or elapsed >= self.settings.trader_max_interval_seconds
         triggered = max_move >= self.settings.trader_move_trigger_pct
         run = due or triggered or self._material_event_pending
-        reason = "MAX_INTERVAL" if due else "MARKET_MOVE" if triggered else "MATERIAL_EVENT" if self._material_event_pending else "NO_MATERIAL_CHANGE"
-        return {"run": run, "event_reason": reason, "max_move_pct": max_move,
-                "max_interval_seconds": self.settings.trader_max_interval_seconds}
+        reason = (
+            "MAX_INTERVAL"
+            if due
+            else "MARKET_MOVE"
+            if triggered
+            else "MATERIAL_EVENT"
+            if self._material_event_pending
+            else "NO_MATERIAL_CHANGE"
+        )
+        return {
+            "run": run,
+            "event_reason": reason,
+            "max_move_pct": max_move,
+            "max_interval_seconds": self.settings.trader_max_interval_seconds,
+        }
 
     def activation_config(self) -> ActivationConfig:
         return ActivationConfig(
@@ -353,15 +359,9 @@ class AgentService:
             us_equities_sessions=self.settings.us_equities_sessions,
             crypto_sessions=self.settings.crypto_sessions,
             liquidity_filter_enabled=self.settings.liquidity_filter_enabled,
-            liquidity_min_24h_volume_usd=(
-                self.settings.liquidity_min_24h_volume_usd
-            ),
-            liquidity_min_open_interest_usd=(
-                self.settings.liquidity_min_open_interest_usd
-            ),
-            liquidity_min_eligible_assets=(
-                self.settings.liquidity_min_eligible_assets
-            ),
+            liquidity_min_24h_volume_usd=(self.settings.liquidity_min_24h_volume_usd),
+            liquidity_min_open_interest_usd=(self.settings.liquidity_min_open_interest_usd),
+            liquidity_min_eligible_assets=(self.settings.liquidity_min_eligible_assets),
         )
 
     def _activation_observation(self) -> LiquidityObservation:
@@ -535,7 +535,11 @@ class AgentService:
         now = datetime.now(timezone.utc)
         funding_by_symbol: dict[str, float] = {}
         fills_by_symbol: dict[str, list[dict]] = {}
-        if positions and isinstance(self.market, HyperliquidMarketData) and self.market.account_address:
+        if (
+            positions
+            and isinstance(self.market, HyperliquidMarketData)
+            and self.market.account_address
+        ):
             earliest = min(datetime.fromisoformat(item["opened_at"]) for item in positions)
             if earliest.tzinfo is None:
                 earliest = earliest.replace(tzinfo=timezone.utc)
@@ -548,7 +552,9 @@ class AgentService:
                 for record in records:
                     delta = record.get("delta", {})
                     symbol = str(delta.get("coin") or "")
-                    funding_by_symbol[symbol] = funding_by_symbol.get(symbol, 0.0) + float(delta.get("usdc") or 0)
+                    funding_by_symbol[symbol] = funding_by_symbol.get(symbol, 0.0) + float(
+                        delta.get("usdc") or 0
+                    )
             except RuntimeError:
                 pass
             try:
@@ -561,11 +567,10 @@ class AgentService:
         for position in positions:
             symbol = position["symbol"]
             current_open = self.repository.latest_filled_open_intent(symbol)
-            current_parent_id = (
-                current_open["intent_id"] if current_open is not None else None
-            )
+            current_parent_id = current_open["intent_id"] if current_open is not None else None
             symbol_protections = [
-                item for item in protections
+                item
+                for item in protections
                 if item["symbol"] == symbol
                 and item["parent_intent_id"] == current_parent_id
                 and item["status"] not in {"CANCELED", "REJECTED"}
@@ -575,8 +580,7 @@ class AgentService:
             side = position["side"]
             stop = float(position["invalidation_px"])
             targets = sorted(
-                [float(item["trigger_px"]) for item in symbol_protections
-                 if item["kind"] == "TP"],
+                [float(item["trigger_px"]) for item in symbol_protections if item["kind"] == "TP"],
                 reverse=side == "SHORT",
             ) or [float(value) for value in position.get("targets", [])]
             direction = 1 if side == "LONG" else -1
@@ -590,26 +594,37 @@ class AgentService:
             if include_charts and isinstance(self.market, HyperliquidMarketData):
                 try:
                     candles = self.market.client.candles(
-                        symbol, interval, int(opened.timestamp() * 1000), int(now.timestamp() * 1000)
+                        symbol,
+                        interval,
+                        int(opened.timestamp() * 1000),
+                        int(now.timestamp() * 1000),
                     )
-                    chart = [{
-                        "time": int(item.get("t", 0)),
-                        "price": float(item.get("c", 0)),
-                        "open": float(item.get("o", item.get("c", 0))),
-                        "high": float(item.get("h", item.get("c", 0))),
-                        "low": float(item.get("l", item.get("c", 0))),
-                        "close": float(item.get("c", 0)),
-                        "volume": float(item.get("v", 0)),
-                    } for item in candles]
+                    chart = [
+                        {
+                            "time": int(item.get("t", 0)),
+                            "price": float(item.get("c", 0)),
+                            "open": float(item.get("o", item.get("c", 0))),
+                            "high": float(item.get("h", item.get("c", 0))),
+                            "low": float(item.get("l", item.get("c", 0))),
+                            "close": float(item.get("c", 0)),
+                            "volume": float(item.get("v", 0)),
+                        }
+                        for item in candles
+                    ]
                 except RuntimeError:
                     if self._analytics_cache:
                         previous = next(
-                            (item for item in self._analytics_cache[1]["positions"]
-                             if item["symbol"] == symbol), None
+                            (
+                                item
+                                for item in self._analytics_cache[1]["positions"]
+                                if item["symbol"] == symbol
+                            ),
+                            None,
                         )
                         chart = previous.get("chart", []) if previous else []
             symbol_fills = [
-                fill for fill in fills_by_symbol.get(symbol, [])
+                fill
+                for fill in fills_by_symbol.get(symbol, [])
                 if int(fill.get("time") or 0) >= int(opened.timestamp() * 1000)
             ]
             fills_by_cloid: dict[str, list[dict]] = {}
@@ -625,67 +640,102 @@ class AgentService:
                     (item for item in tp_protections if float(item["trigger_px"]) == target),
                     None,
                 )
-                target_fills = fills_by_cloid.get(
-                    str(protection.get("cloid") or "").lower(), []
-                ) if protection else []
+                target_fills = (
+                    fills_by_cloid.get(str(protection.get("cloid") or "").lower(), [])
+                    if protection
+                    else []
+                )
                 filled_size = sum(float(item.get("sz") or 0) for item in target_fills)
                 filled_notional = sum(
-                    float(item.get("sz") or 0) * float(item.get("px") or 0)
-                    for item in target_fills
+                    float(item.get("sz") or 0) * float(item.get("px") or 0) for item in target_fills
                 )
-                average_fill = (
-                    filled_notional / filled_size if filled_size else None
+                average_fill = filled_notional / filled_size if filled_size else None
+                target_stats.append(
+                    {
+                        "level": int(protection["level_index"]) if protection else index + 1,
+                        "price": target,
+                        "distance_pct": direction * (target / mark - 1) * 100 if mark else 0,
+                        "progress_pct": 100.0
+                        if target_fills
+                        else max(
+                            0.0,
+                            min(
+                                100.0,
+                                direction
+                                * (mark - entry)
+                                / max(direction * (target - entry), 1e-9)
+                                * 100,
+                            ),
+                        ),
+                        "reward_r": direction * (target - entry) / initial_risk,
+                        "status": "ACHIEVED"
+                        if target_fills
+                        else str(protection.get("status") if protection else "PLANNED"),
+                        "hit_at": datetime.fromtimestamp(
+                            min(int(item["time"]) for item in target_fills) / 1000, timezone.utc
+                        ).isoformat()
+                        if target_fills
+                        else None,
+                        "average_fill_px": average_fill,
+                        "filled_size": filled_size,
+                        "filled_notional_usd": filled_notional,
+                        "realized_pnl_usd": sum(
+                            float(item.get("closedPnl") or 0) for item in target_fills
+                        ),
+                        "fees_usd": sum(float(item.get("fee") or 0) for item in target_fills),
+                    }
                 )
-                target_stats.append({
-                    "level": int(protection["level_index"]) if protection else index + 1,
-                    "price": target,
-                    "distance_pct": direction * (target / mark - 1) * 100 if mark else 0,
-                    "progress_pct": 100.0 if target_fills else max(0.0, min(100.0, direction * (mark - entry) /
-                                                 max(direction * (target - entry), 1e-9) * 100)),
-                    "reward_r": direction * (target - entry) / initial_risk,
-                    "status": "ACHIEVED" if target_fills else str(protection.get("status") if protection else "PLANNED"),
-                    "hit_at": datetime.fromtimestamp(min(int(item["time"]) for item in target_fills) / 1000, timezone.utc).isoformat() if target_fills else None,
-                    "average_fill_px": average_fill,
-                    "filled_size": filled_size,
-                    "filled_notional_usd": filled_notional,
-                    "realized_pnl_usd": sum(float(item.get("closedPnl") or 0) for item in target_fills),
-                    "fees_usd": sum(float(item.get("fee") or 0) for item in target_fills),
-                })
             realized_pnl = sum(float(item.get("closedPnl") or 0) for item in symbol_fills)
             trade_fees = sum(float(item.get("fee") or 0) for item in symbol_fills)
-            opening_fills = [item for item in symbol_fills if str(item.get("dir") or "").startswith("Open")]
+            opening_fills = [
+                item for item in symbol_fills if str(item.get("dir") or "").startswith("Open")
+            ]
             initial_size = sum(float(item.get("sz") or 0) for item in opening_fills)
-            closed_size = sum(float(item.get("sz") or 0) for item in symbol_fills if str(item.get("dir") or "").startswith("Close"))
+            closed_size = sum(
+                float(item.get("sz") or 0)
+                for item in symbol_fills
+                if str(item.get("dir") or "").startswith("Close")
+            )
             realized_net = realized_pnl - trade_fees
             funding_net = funding_by_symbol.get(symbol, 0.0)
             unrealized = float(position.get("unrealized_pnl_usd") or 0)
             liquidation = float(position.get("liquidation_px") or 0)
-            result.append({
-                **position,
-                "interval": interval,
-                "chart": chart,
-                "distance_to_stop_pct": direction * (mark / stop - 1) * 100 if stop else 0,
-                "distance_to_liquidation_pct": abs(mark / liquidation - 1) * 100 if liquidation else None,
-                "unrealized_r": direction * (mark - entry) / initial_risk,
-                "targets_analytics": target_stats,
-                "initial_size": initial_size,
-                "closed_size": closed_size,
-                "closed_fraction_pct": min(100.0, closed_size / initial_size * 100) if initial_size else 0.0,
-                "realized_pnl_usd": realized_pnl,
-                "trade_fees_usd": trade_fees,
-                "realized_net_pnl_usd": realized_net,
-                "funding_net_usd": funding_net,
-                "funding_paid_usd": max(0.0, -funding_net),
-                "pnl_after_funding_usd": unrealized + funding_net,
-                "total_trade_net_pnl_usd": realized_pnl + unrealized + funding_net - trade_fees,
-            })
-        payload = {"positions": result, "as_of": now.isoformat(),
-                   "funding_net_usd": sum(funding_by_symbol.values()),
-                   "open_pnl_after_funding_usd": sum(
-                       float(item.get("unrealized_pnl_usd") or 0) for item in positions
-                   ) + sum(funding_by_symbol.values()),
-                   "prompt_used": False,
-                   "strategy": "Deterministic exchange-side SL/TP reconciliation"}
+            result.append(
+                {
+                    **position,
+                    "interval": interval,
+                    "chart": chart,
+                    "distance_to_stop_pct": direction * (mark / stop - 1) * 100 if stop else 0,
+                    "distance_to_liquidation_pct": abs(mark / liquidation - 1) * 100
+                    if liquidation
+                    else None,
+                    "unrealized_r": direction * (mark - entry) / initial_risk,
+                    "targets_analytics": target_stats,
+                    "initial_size": initial_size,
+                    "closed_size": closed_size,
+                    "closed_fraction_pct": min(100.0, closed_size / initial_size * 100)
+                    if initial_size
+                    else 0.0,
+                    "realized_pnl_usd": realized_pnl,
+                    "trade_fees_usd": trade_fees,
+                    "realized_net_pnl_usd": realized_net,
+                    "funding_net_usd": funding_net,
+                    "funding_paid_usd": max(0.0, -funding_net),
+                    "pnl_after_funding_usd": unrealized + funding_net,
+                    "total_trade_net_pnl_usd": realized_pnl + unrealized + funding_net - trade_fees,
+                }
+            )
+        payload = {
+            "positions": result,
+            "as_of": now.isoformat(),
+            "funding_net_usd": sum(funding_by_symbol.values()),
+            "open_pnl_after_funding_usd": sum(
+                float(item.get("unrealized_pnl_usd") or 0) for item in positions
+            )
+            + sum(funding_by_symbol.values()),
+            "prompt_used": False,
+            "strategy": "Deterministic exchange-side SL/TP reconciliation",
+        }
         if include_charts:
             self._analytics_cache = (now_mono, payload)
         return payload
@@ -699,9 +749,7 @@ class AgentService:
         data["max_model_leverage"] = self.settings.max_model_leverage
         data["automation_enabled"] = self.settings.automation_enabled
         data["cycle_interval_seconds"] = self.settings.cycle_interval_seconds
-        data["risk_monitor_interval_seconds"] = (
-            self.settings.risk_monitor_interval_seconds
-        )
+        data["risk_monitor_interval_seconds"] = self.settings.risk_monitor_interval_seconds
         data["x_search_enabled"] = self.settings.x_search_enabled
         data["paper_equity_usd"] = self.settings.paper_equity_usd
         try:
@@ -719,12 +767,8 @@ class AgentService:
         data["market_quality_warnings"] = self.market.quality_warnings
         data["universe_scan"] = getattr(self.market, "last_universe_scan", [])
         data["hyperliquid_network"] = self.settings.hyperliquid_network
-        data["hyperliquid_execution_network"] = (
-            self.settings.hyperliquid_execution_network
-        )
-        data["hyperliquid_account_configured"] = bool(
-            self.settings.hyperliquid_account_address
-        )
+        data["hyperliquid_execution_network"] = self.settings.hyperliquid_execution_network
+        data["hyperliquid_account_configured"] = bool(self.settings.hyperliquid_account_address)
         if isinstance(self.market, HyperliquidMarketData):
             try:
                 data["hyperliquid_account"] = self.market.account_snapshot()
@@ -739,11 +783,7 @@ class AgentService:
         """Return an idempotent computed view of completed exchange trades."""
 
         now_mono = time.monotonic()
-        if (
-            not fresh
-            and self._trade_history_cache
-            and now_mono - self._trade_history_cache[0] < 30
-        ):
+        if not fresh and self._trade_history_cache and now_mono - self._trade_history_cache[0] < 30:
             return self._trade_history_cache[1]
 
         account_address = self.settings.hyperliquid_account_address or getattr(
@@ -815,10 +855,7 @@ class AgentService:
             cycles=context["cycles"],
         )
         cutoff = self.settings.trade_history_start_at.astimezone(timezone.utc)
-        trades = [
-            item for item in trades
-            if item.opened_at >= cutoff or "+local_" in item.source
-        ]
+        trades = [item for item in trades if item.opened_at >= cutoff or "+local_" in item.source]
         payload = {
             "trades": [item.model_dump(mode="json") for item in trades],
             "total": len(trades),

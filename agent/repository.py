@@ -69,9 +69,7 @@ class Repository:
         recovered: list[str] = []
         finished_at = datetime.now(timezone.utc)
         with self.sessions.begin() as session:
-            rows = session.scalars(
-                select(CycleRow).where(CycleRow.status == "RUNNING")
-            ).all()
+            rows = session.scalars(select(CycleRow).where(CycleRow.status == "RUNNING")).all()
             for row in rows:
                 recovered.append(row.cycle_id)
                 state = dict(row.state or {})
@@ -182,9 +180,7 @@ class Repository:
     ) -> tuple[dict[str, Any], bool]:
         with self.sessions() as session:
             existing = session.scalar(
-                select(OrderIntentRow).where(
-                    OrderIntentRow.decision_key == order.decision_key
-                )
+                select(OrderIntentRow).where(OrderIntentRow.decision_key == order.decision_key)
             )
             if existing is not None:
                 return self._intent_dict(existing), False
@@ -207,9 +203,7 @@ class Repository:
             except IntegrityError:
                 session.rollback()
                 existing = session.scalar(
-                    select(OrderIntentRow).where(
-                        OrderIntentRow.decision_key == order.decision_key
-                    )
+                    select(OrderIntentRow).where(OrderIntentRow.decision_key == order.decision_key)
                 )
                 if existing is None:
                     raise
@@ -255,9 +249,7 @@ class Repository:
                         level_index=spec.level_index,
                         trigger_px=Decimal(str(spec.trigger_px)),
                         size_fraction=Decimal(str(spec.size_fraction)),
-                        original_notional_usd=Decimal(
-                            str(spec.original_notional_usd)
-                        ),
+                        original_notional_usd=Decimal(str(spec.original_notional_usd)),
                         status=status,
                         payload=spec.model_dump(mode="json"),
                     )
@@ -276,9 +268,7 @@ class Repository:
             if symbol is not None:
                 query = query.where(ProtectiveOrderRow.symbol == symbol)
             if parent_intent_id is not None:
-                query = query.where(
-                    ProtectiveOrderRow.parent_intent_id == parent_intent_id
-                )
+                query = query.where(ProtectiveOrderRow.parent_intent_id == parent_intent_id)
             if statuses:
                 query = query.where(ProtectiveOrderRow.status.in_(statuses))
             rows = session.scalars(
@@ -309,9 +299,7 @@ class Repository:
             for row in rows:
                 row.status = status
 
-    def apply_paper_protection_triggers(
-        self, marks: dict[str, float]
-    ) -> list[dict[str, Any]]:
+    def apply_paper_protection_triggers(self, marks: dict[str, float]) -> list[dict[str, Any]]:
         triggered: list[dict[str, Any]] = []
         with self.sessions.begin() as session:
             rows = session.scalars(
@@ -370,19 +358,16 @@ class Repository:
                 )
                 for take_profit in take_profits:
                     hit = (
-                        take_profit.direction == "LONG"
-                        and mark >= float(take_profit.trigger_px)
+                        take_profit.direction == "LONG" and mark >= float(take_profit.trigger_px)
                     ) or (
-                        take_profit.direction == "SHORT"
-                        and mark <= float(take_profit.trigger_px)
+                        take_profit.direction == "SHORT" and mark <= float(take_profit.trigger_px)
                     )
                     if not hit:
                         continue
                     current_notional = float(position.notional_usd)
                     amount = min(
                         current_notional,
-                        float(take_profit.original_notional_usd)
-                        * float(take_profit.size_fraction),
+                        float(take_profit.original_notional_usd) * float(take_profit.size_fraction),
                     )
                     remaining = current_notional - amount
                     take_profit.status = "TRIGGERED"
@@ -477,17 +462,19 @@ class Repository:
                     ).all()
                     targets = [float(target.trigger_px) for target in target_rows]
                 notional = float(row.notional_usd)
-                positions.append({
-                    "symbol": row.symbol,
-                    "side": row.side,
-                    "notional_usd": notional,
-                    "leverage": leverage,
-                    "margin_used_usd": notional / leverage,
-                    "entry_px": float(row.entry_px),
-                    "invalidation_px": float(row.invalidation_px),
-                    "targets": targets,
-                    "opened_at": _iso(row.opened_at),
-                })
+                positions.append(
+                    {
+                        "symbol": row.symbol,
+                        "side": row.side,
+                        "notional_usd": notional,
+                        "leverage": leverage,
+                        "margin_used_usd": notional / leverage,
+                        "entry_px": float(row.entry_px),
+                        "invalidation_px": float(row.invalidation_px),
+                        "targets": targets,
+                        "opened_at": _iso(row.opened_at),
+                    }
+                )
             return positions
 
     def open_paper_position(self, order: ApprovedOrder) -> None:
@@ -530,9 +517,7 @@ class Repository:
 
         with self.sessions() as session:
             intents = session.scalars(
-                select(OrderIntentRow)
-                .order_by(desc(OrderIntentRow.created_at))
-                .limit(limit)
+                select(OrderIntentRow).order_by(desc(OrderIntentRow.created_at)).limit(limit)
             ).all()
             protections = session.scalars(
                 select(ProtectiveOrderRow)
@@ -540,9 +525,7 @@ class Repository:
                 .limit(limit)
             ).all()
             cycles = session.scalars(
-                select(CycleRow)
-                .order_by(desc(CycleRow.started_at))
-                .limit(limit)
+                select(CycleRow).order_by(desc(CycleRow.started_at)).limit(limit)
             ).all()
         return {
             "intents": [self._intent_dict(row) for row in intents],
