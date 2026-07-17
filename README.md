@@ -8,7 +8,7 @@ Typed decisions · neutral simulation · idempotent execution · real-time obser
 
 </div>
 
-![HyperAgent multi-agent architecture](docs/assets/plantuml-agent-flow.png)
+![HyperAgent multi-agent architecture](docs/assets/infographic-agent-flow.png)
 
 ## The idea in 10 seconds
 
@@ -37,7 +37,7 @@ The agents share a LangGraph state but never receive exchange credentials or an 
 
 ## Backend & container topology
 
-![HyperAgent Docker and backend architecture](docs/assets/plantuml-backend-topology.png)
+![HyperAgent Docker and backend architecture](docs/assets/infographic-application-architecture.png)
 
 The application runs as three Docker Compose services:
 
@@ -47,9 +47,15 @@ The application runs as three Docker Compose services:
 
 The backend integrates four external surfaces: xAI structured generation, X/web search, Hyperliquid read APIs and the signed Hyperliquid exchange API.
 
+### Production VPS deployment
+
+![HyperAgent VPS and backend deployment](docs/assets/infographic-vps-backend-deployment.png)
+
+The production dashboard is bound to the VPS loopback interface and reached through an encrypted SSH tunnel. API, scheduler, execution service and PostgreSQL communicate inside Docker Compose; only outbound HTTPS traffic reaches xAI, X/web and Hyperliquid.
+
 ## Reliability by design
 
-![HyperAgent reliability and testing pipeline](docs/assets/plantuml-reliability-lifecycle.png)
+![HyperAgent reliability and testing pipeline](docs/assets/infographic-order-lifecycle.png)
 
 Key engineering properties:
 

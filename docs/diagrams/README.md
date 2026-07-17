@@ -1,6 +1,6 @@
 # Architecture diagrams
 
-The versioned `.puml` files are the source of truth for the architecture visuals used by the project README.
+The versioned `.puml` files provide maintainable technical views of the architecture. The project README uses simplified editorial infographics stored in `docs/assets/`.
 
 Render every PNG from the repository root with:
 
@@ -8,4 +8,4 @@ Render every PNG from the repository root with:
 .\docs\diagrams\render.ps1
 ```
 
-The script sends the PlantUML sources to Kroki and replaces the matching files in `docs/assets/`.
+The script sends the PlantUML sources to Kroki and writes the technical renders to `docs/diagrams/rendered/`.

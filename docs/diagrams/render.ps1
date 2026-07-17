@@ -1,8 +1,10 @@
 $ErrorActionPreference = "Stop"
 
 $diagramDirectory = $PSScriptRoot
-$assetDirectory = Join-Path (Split-Path $diagramDirectory -Parent) "assets"
+$assetDirectory = Join-Path $diagramDirectory "rendered"
 $renderer = "https://kroki.io/plantuml/png"
+
+New-Item -ItemType Directory -Path $assetDirectory -Force | Out-Null
 
 Get-ChildItem $diagramDirectory -Filter "*.puml" | ForEach-Object {
     $output = Join-Path $assetDirectory ($_.BaseName + ".png")
